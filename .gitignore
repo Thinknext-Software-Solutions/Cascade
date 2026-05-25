@@ -17,6 +17,7 @@ dist/
 venv/
 env/
 .uv/
+.pkgs/
 
 # IDE
 .vscode/

@@ -1,0 +1,41 @@
+# cascade.yaml
+# Configuration for the Cascade SDLC accelerator.
+# Copy to cascade.yaml and adjust for your project.
+
+version: 1
+
+agent:
+  # LLM provider. v0.1 supports: anthropic. More providers coming.
+  provider: anthropic
+  # Specific model to use. Override on the CLI with --model.
+  model: claude-opus-4-7
+  # How many review-feedback iteration rounds before giving up.
+  # 0 = open PR and stop. 1-5 = retry up to N times based on PR comments.
+  max_iterations: 1
+  # Sampling temperature. Lower = more deterministic. 0.0 to 2.0.
+  temperature: 0.2
+
+memory:
+  # Path (relative to repo root) where the team-memory/ directory lives.
+  path: team-memory
+  # Max characters of team memory included in any single LLM call.
+  # Truncates politely if the directory exceeds this budget.
+  max_chars_per_call: 20000
+
+paths:
+  # Glob patterns the agent IS allowed to write to.
+  allowed:
+    - "src/**"
+    - "tests/**"
+    - "docs/**"
+  # Glob patterns the agent is NEVER allowed to write to.
+  # Deny wins over allow.
+  disallowed:
+    - ".github/**"
+    - "migrations/**"
+    - "cascade.yaml"
+    - "team-memory/**"
+
+# Shell command Cascade runs to validate generated code.
+# Must exit 0 if tests pass.
+test_command: pytest

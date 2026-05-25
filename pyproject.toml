@@ -43,8 +43,8 @@ cascade = "cascade.cli:main"
 
 [project.urls]
 Homepage = "https://thinknextsoftware.com"
-Repository = "https://github.com/thinknext/cascade"
-Issues = "https://github.com/thinknext/cascade/issues"
+Repository = "https://github.com/Thinknext-Software-Solutions/Cascade"
+Issues = "https://github.com/Thinknext-Software-Solutions/Cascade/issues"
 
 [build-system]
 requires = ["hatchling"]

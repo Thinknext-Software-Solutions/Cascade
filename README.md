@@ -196,7 +196,7 @@ The combination of *meeting-as-input* + *team-memory substrate* + *OSS self-host
 
 ## Sister project: Relay
 
-For teams that already have well-scoped issues and don't need the meeting-extraction front-end, the simpler [Relay](https://github.com/thinknext/relay) project is a focused Issue→PR agent. Cascade is the broader vision; Relay is one specific entry point into the build pipeline.
+For teams that already have well-scoped issues and don't need the meeting-extraction front-end, the simpler [Relay](https://github.com/Thinknext-Software-Solutions/Relay) project is a focused Issue→PR agent. Cascade is the broader vision; Relay is one specific entry point into the build pipeline.
 
 ---
 
