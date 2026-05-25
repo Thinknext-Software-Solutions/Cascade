@@ -50,12 +50,32 @@ google = ["google-genai>=0.3"]
 claude-code = ["claude-agent-sdk>=0.1"]
 gitlab = ["python-gitlab>=4.0"]
 jira = ["atlassian-python-api>=3.41"]
+studio = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.0",
+    "sqlmodel>=0.0.22",
+    "python-multipart>=0.0.9",
+]
 all = [
     "openai>=1.50",
     "google-genai>=0.3",
     "claude-agent-sdk>=0.1",
     "python-gitlab>=4.0",
     "atlassian-python-api>=3.41",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.0",
+    "sqlmodel>=0.0.22",
+    "python-multipart>=0.0.9",
+]
+
+[tool.hatch.build]
+# Include the bundled Studio frontend in built wheels so `cascade ui`
+# serves the real UI from a pip install.
+include = [
+    "src/cascade/**/*.py",
+    "src/cascade/studio/static/**/*",
 ]
 
 [project.scripts]

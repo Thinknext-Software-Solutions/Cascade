@@ -52,7 +52,7 @@ A handful of choices set Cascade apart from the rest of the agent landscape:
 
 ```bash
 pip install cascade-agent              # base install
-pip install cascade-agent[all]         # adds optional providers (OpenAI, Gemini, GitLab, Jira, Claude Code)
+pip install cascade-agent[all]         # adds optional providers + Studio web dashboard
 
 cascade init                            # scaffold cascade.yaml and team-memory/
 
@@ -70,7 +70,23 @@ cascade ingest recordings/standup.mp3       # writes transcripts/*.yaml
 cascade extract transcripts/standup.yaml    # writes stories/*.yaml
 cascade review stories/standup.yaml         # interactive accept / edit / reject
 cascade build stories/standup.yaml          # plan, code, test, PR
+
+# Prefer a web dashboard?
+cascade ui                                  # opens http://localhost:8000
 ```
+
+## Cascade Studio (the web dashboard)
+
+Cascade ships with a web UI that surfaces the same operations as the CLI in a friendlier interface: visual story review, build history, provider config forms, and a team-memory editor with markdown preview.
+
+```bash
+pip install cascade-agent[studio]      # adds FastAPI + uvicorn
+cascade ui                              # starts at http://localhost:8000
+```
+
+The dashboard runs locally. No remote service, no auth required for single-user mode, your code never leaves your machine. The frontend ships pre-built inside the pip package; no Node.js install needed at runtime.
+
+Studio is in early development; the frontend source lives at [Thinknext-Software-Solutions/Cascade-Studio](https://github.com/Thinknext-Software-Solutions/Cascade-Studio) and the bundled UI updates with every `cascade-agent` release.
 
 Credentials live at `~/.config/cascade/config.yaml` (mode 0600). Run `cascade configure show` to see what's set, with secrets masked.
 

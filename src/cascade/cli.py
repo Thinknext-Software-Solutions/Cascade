@@ -880,6 +880,89 @@ def ticket(
         sys.exit(1)
 
 
+# ----------------------------------------------------------------------------
+# ui -- launch Cascade Studio (web dashboard)
+# ----------------------------------------------------------------------------
+
+
+@cli.command()
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind. Use 0.0.0.0 to allow connections from other machines.",
+)
+@click.option(
+    "--port",
+    default=8000,
+    show_default=True,
+    type=int,
+    help="Port to bind.",
+)
+@click.option(
+    "--no-browser",
+    is_flag=True,
+    help="Don't open a browser window after the server starts.",
+)
+def ui(host: str, port: int, no_browser: bool) -> None:
+    """Launch Cascade Studio (the web dashboard).
+
+    Requires the [studio] extra:
+        pip install cascade-agent[studio]
+
+    The dashboard runs locally at http://HOST:PORT and auto-opens in
+    your default browser unless --no-browser is set.
+    """
+    try:
+        from .studio.server import create_app
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
+    except ImportError as exc:
+        click.echo(
+            "error: Cascade Studio dependencies are not installed.\n"
+            "  pip install cascade-agent[studio]",
+            err=True,
+        )
+        click.echo(f"  (underlying: {exc})", err=True)
+        sys.exit(1)
+
+    import threading
+    import time
+    import webbrowser
+
+    try:
+        import uvicorn  # type: ignore
+    except ImportError:
+        click.echo(
+            "error: uvicorn not installed.  pip install cascade-agent[studio]",
+            err=True,
+        )
+        sys.exit(1)
+
+    url = f"http://{host}:{port}"
+    click.echo(f"  Cascade Studio starting at {url}")
+    click.echo("  Press Ctrl+C to stop.")
+    click.echo()
+
+    if not no_browser:
+        # Open the browser shortly after the server starts. Best effort;
+        # if the browser can't be opened (headless env), just continue.
+        def _open():
+            time.sleep(1.0)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+        threading.Thread(target=_open, daemon=True).start()
+
+    # Build the app instance and hand it to uvicorn. We pass the factory
+    # via dotted path so uvicorn handles its own lifecycle cleanly.
+    app = create_app()
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
 def main() -> None:
     """Entry point referenced from pyproject.toml."""
     cli(obj={})
