@@ -54,7 +54,7 @@ A handful of choices set Cascade apart from the rest of the agent landscape:
 pip install cascade-agent              # base install
 pip install cascade-agent[all]         # adds optional providers + Studio web dashboard
 
-cascade init                            # scaffold cascade.yaml and team-memory/
+cascade init                           # scaffold cascade.yaml + smart-seeded team-memory/
 
 cascade configure llm anthropic --key sk-ant-xxx --set-default
 # Or skip the key entirely if you have Claude Code installed:
@@ -62,7 +62,10 @@ cascade configure llm claude_code --set-default
 
 cascade configure vcs github --token ghp-xxx
 
-# Pick whichever entry point matches how the work showed up:
+cascade doctor                         # verify everything is wired correctly
+cascade try                            # risk-free end-to-end pipeline test
+
+# Then pick whichever entry point matches how the work showed up:
 cascade prompt "Add cursor pagination to /api/users with ?limit and ?after"
 cascade ticket jira:PROJ-123
 cascade ticket github:myorg/myrepo#42
@@ -74,6 +77,15 @@ cascade build stories/standup.yaml          # plan, code, test, PR
 # Prefer a web dashboard?
 cascade ui                                  # opens http://localhost:8000
 ```
+
+## First-run experience
+
+Cascade includes two commands designed to remove the "is this thing working?" anxiety:
+
+- **`cascade doctor`** runs ~11 health checks (Python version, optional extras, git, cascade.yaml, team memory, language detection, LLM credentials, VCS credentials, test runner) and reports each one as OK / warning / failed with actionable hints for fixing anything that's wrong. Inspired by `gh auth status` and `homebrew doctor`.
+- **`cascade try`** runs a built-in toy story end-to-end in a disposable temp directory. It asks Cascade to add a tiny `hello()` function and a test, generates the code, runs the test, and reports whether it all worked. Touches nothing in your real repo. Five minutes of confidence before you bet on a real build.
+
+Run `cascade init` to scaffold a project; the team-memory files come **pre-seeded** with sensible defaults based on the language detected in your repo (Python projects get pytest conventions, Go projects get gofmt conventions, etc.). Edit to personalize.
 
 ## Cascade Studio (the web dashboard)
 

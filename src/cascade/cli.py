@@ -27,8 +27,11 @@ import click
 
 from . import __version__
 from .config import DEFAULT_CONFIG_FILENAME, load_config
+from .demo import run_demo
+from .doctor import CheckStatus, run_doctor, summarize
 from .exceptions import CascadeError
 from .extractor import extract_stories
+from .init_seed import seed_team_memory
 from .io import read_story_batch, read_transcript, write_story_batch
 from .issue_sources import (
     SUPPORTED_ISSUE_SOURCES,
@@ -100,8 +103,18 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     is_flag=True,
     help="Overwrite existing files if present.",
 )
-def init(force: bool) -> None:
-    """Scaffold cascade.yaml and team-memory/ in the current directory."""
+@click.option(
+    "--no-seed",
+    is_flag=True,
+    help="Use bare templates instead of language-aware seeded content.",
+)
+def init(force: bool, no_seed: bool) -> None:
+    """Scaffold cascade.yaml and team-memory/ in the current directory.
+
+    By default, team-memory files are seeded with sensible defaults based
+    on the detected language and any existing ADR documentation in the
+    repo. Use --no-seed for bare templates instead.
+    """
     root = Path.cwd()
 
     # 1. cascade.yaml
@@ -115,19 +128,32 @@ def init(force: bool) -> None:
     # 2. team-memory/ directory
     mem_dir = root / "team-memory"
     mem_dir.mkdir(exist_ok=True)
+
+    if no_seed:
+        seeded = None
+    else:
+        try:
+            seeded = seed_team_memory(root)
+        except Exception as exc:
+            click.echo(f"  note: smart seeding failed ({exc}); using bare templates")
+            seeded = None
+
     for name in KNOWN_MEMORY_FILES:
         p = mem_dir / name
         if p.exists() and not force:
             click.echo(f"  exists  team-memory/{name} (use --force to overwrite)")
             continue
-        p.write_text(_starter_content_for(name))
-        click.echo(f"  wrote   team-memory/{name}")
+        content = seeded[name] if seeded else _starter_content_for(name)
+        p.write_text(content)
+        annotation = " (seeded)" if seeded else ""
+        click.echo(f"  wrote   team-memory/{name}{annotation}")
 
     click.echo()
     click.echo("Cascade initialized. Next steps:")
-    click.echo("  1. Edit team-memory/*.md with your team's real conventions and decisions.")
-    click.echo("  2. Set the ANTHROPIC_API_KEY environment variable.")
-    click.echo("  3. Run: cascade extract <transcript.txt> to try the extractor.")
+    click.echo("  1. Run `cascade doctor` to verify your setup.")
+    click.echo("  2. Edit team-memory/*.md with your team's real conventions.")
+    click.echo("  3. Configure an LLM: `cascade configure llm anthropic --key ...`")
+    click.echo("  4. Run `cascade try` to verify the full pipeline works end-to-end.")
 
 
 # ----------------------------------------------------------------------------
@@ -877,6 +903,161 @@ def ticket(
         _print_build_result(result, no_pr=no_pr)
     except CascadeError as exc:
         click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ----------------------------------------------------------------------------
+# doctor -- health check
+# ----------------------------------------------------------------------------
+
+
+_STATUS_ICONS = {
+    CheckStatus.OK: ("✓", "green"),
+    CheckStatus.WARN: ("!", "yellow"),
+    CheckStatus.FAIL: ("✗", "red"),
+    CheckStatus.SKIP: ("-", None),
+}
+
+
+@cli.command()
+@click.option(
+    "--repo-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Repo to check. Defaults to the current directory.",
+)
+def doctor(repo_root: Path | None) -> None:
+    """Health-check the Cascade installation and report status of every component.
+
+    Walks through a series of checks (Python version, optional extras, git,
+    cascade.yaml, team memory, LLM and VCS credentials, test runner) and
+    reports each as OK / WARN / FAIL with actionable suggestions for any
+    issues found.
+    """
+    target = (repo_root or Path.cwd()).resolve()
+    results = run_doctor(target)
+
+    click.echo()
+    click.echo(f"Cascade {__version__} on {target}")
+    click.echo("=" * 60)
+    click.echo()
+
+    for r in results:
+        icon, color = _STATUS_ICONS[r.status]
+        prefix = click.style(f"[{icon}]", fg=color) if color else f"[{icon}]"
+        click.echo(f"  {prefix}  {r.name:24s}  {r.message}")
+        if r.suggestion and r.status != CheckStatus.OK:
+            click.echo(f"        {click.style('hint:', fg='cyan')} {r.suggestion}")
+
+    ok, warn, fail, skip = summarize(results)
+    click.echo()
+    click.echo("=" * 60)
+    parts = []
+    if ok:
+        parts.append(click.style(f"{ok} ok", fg="green"))
+    if warn:
+        parts.append(click.style(f"{warn} warning", fg="yellow"))
+    if fail:
+        parts.append(click.style(f"{fail} failed", fg="red"))
+    if skip:
+        parts.append(f"{skip} skipped")
+    click.echo("  " + ", ".join(parts))
+    click.echo()
+
+    if fail:
+        click.echo(click.style("  One or more checks failed.", fg="red"))
+        click.echo("  Fix the issues above before running cascade build.")
+        sys.exit(1)
+    elif warn:
+        click.echo(click.style("  Some checks reported warnings.", fg="yellow"))
+        click.echo("  You can run cascade build, but quality may suffer.")
+        sys.exit(0)
+    else:
+        click.echo(click.style("  All checks passed. You're ready to go.", fg="green"))
+        click.echo("  Try: cascade try   (a risk-free end-to-end pipeline test)")
+        sys.exit(0)
+
+
+# ----------------------------------------------------------------------------
+# try -- risk-free end-to-end verification
+# ----------------------------------------------------------------------------
+
+
+@cli.command(name="try")
+@click.option(
+    "--keep-workspace",
+    is_flag=True,
+    help="Don't delete the temp directory after the run. Useful for inspecting "
+    "what Cascade generated.",
+)
+def try_command(keep_workspace: bool) -> None:
+    """Run a built-in toy story end-to-end to verify the pipeline works.
+
+    Creates a disposable Python project in a temp directory, asks Cascade
+    to add a tiny hello() function (and a test), runs the test, and
+    reports the result. Nothing is pushed; nothing touches your real repo.
+
+    This is the recommended thing to run right after `cascade configure`
+    to know that your setup will work before you bet on it.
+    """
+    try:
+        user_cfg = load_user_config()
+        cfg = load_config()
+        llm_creds = resolve_llm_credentials(
+            user_config=user_cfg,
+            provider=cfg.agent.provider,
+            model_override=cfg.agent.model,
+        )
+        llm = build_client_from_credentials(llm_creds)
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        click.echo("  hint: run `cascade doctor` to find what's missing", err=True)
+        sys.exit(1)
+
+    click.echo()
+    click.echo(f"Running cascade try with {llm.provider_name} / {llm.model}")
+    click.echo("-" * 60)
+
+    def _on_stage(stage: str, message: str) -> None:
+        click.echo(f"  {click.style(stage:=stage[:8].ljust(8), fg='cyan')}  {message}")
+
+    try:
+        result = run_demo(
+            llm=llm,
+            keep_workspace=keep_workspace,
+            on_stage=_on_stage,
+        )
+    except CascadeError as exc:
+        click.echo()
+        click.echo(click.style(f"  FAILED: {exc}", fg="red"), err=True)
+        click.echo("  hint: run `cascade doctor` to debug your setup", err=True)
+        sys.exit(1)
+
+    click.echo()
+    click.echo("-" * 60)
+    if result.success:
+        click.echo(click.style("  cascade try PASSED.", fg="green"))
+        click.echo()
+        click.echo(f"  Plan: {result.plan.summary}")
+        click.echo(f"  Files generated: {len(result.code_change.files)}")
+        click.echo(f"  Tests: {result.test_result.summary}")
+        click.echo()
+        click.echo("  Your installation is working end-to-end.")
+        click.echo("  Try a real one: cascade prompt \"Add a /health endpoint\"")
+    else:
+        click.echo(click.style("  cascade try FAILED at the test stage.", fg="red"))
+        click.echo()
+        click.echo(f"  Plan: {result.plan.summary}")
+        click.echo(f"  Files generated: {len(result.code_change.files)}")
+        click.echo(f"  Test summary: {result.test_result.summary}")
+        click.echo()
+        click.echo("  The LLM produced code but it didn't pass the test.")
+        click.echo("  This often means the LLM you chose isn't producing")
+        click.echo("  high-enough-quality output for Cascade's expectations.")
+        click.echo("  Try a different model or provider.")
+        if keep_workspace:
+            click.echo()
+            click.echo(f"  Workspace preserved at: {result.workspace}")
         sys.exit(1)
 
 
