@@ -86,7 +86,17 @@ class CascadeConfig(BaseModel):
     agent: AgentConfig = Field(default_factory=AgentConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     paths: PathsConfig = Field(default_factory=PathsConfig)
-    test_command: str = Field(default="pytest", description="Shell command to run tests")
+    language: Optional[str] = Field(
+        default=None,
+        description="Explicit language override. If None, Cascade auto-detects "
+        "from marker files in the repo root. Supported: python, typescript, "
+        "javascript, go, rust, java, ruby, csharp.",
+    )
+    test_command: Optional[str] = Field(
+        default=None,
+        description="Override the language profile's default test command. "
+        "If None, Cascade uses the language profile's test_command.",
+    )
 
 
 def load_config(path: Optional[Path] = None) -> CascadeConfig:
