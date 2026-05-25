@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual envs
+.venv/
+venv/
+env/
+.uv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Local config
+.env
+.env.local
+
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
+# Cascade workspace - never commit recordings, transcripts, or generated stories
+recordings/
+transcripts/
+stories/
+*.mp3
+*.mp4
+*.wav
+*.m4a
