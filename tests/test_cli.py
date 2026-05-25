@@ -120,10 +120,11 @@ class TestExtract:
             new_transcript = cwd / "t.yaml"
             write_transcript(sample_transcript, new_transcript)
 
-            with patch("cascade.cli.build_client") as mock_build, patch(
+            with patch("cascade.cli.build_client_from_credentials") as mock_build, patch(
                 "cascade.cli.extract_stories", return_value=fake_result
-            ):
-                mock_build.return_value = object()  # not actually used by mocked extract
+            ), patch("cascade.cli.resolve_llm_credentials") as mock_creds:
+                mock_creds.return_value = object()
+                mock_build.return_value = object()
                 result = runner.invoke(cli, ["extract", str(new_transcript)])
 
             assert result.exit_code == 0, result.output

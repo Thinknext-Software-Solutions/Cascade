@@ -26,6 +26,7 @@ dependencies = [
     "PyYAML>=6.0",
     "openai-whisper>=20231117",
     "pyannote.audio>=3.1",
+    "requests>=2.31",
     "rich>=13.0",
 ]
 
@@ -36,6 +37,25 @@ dev = [
     "black>=24.0",
     "ruff>=0.5",
     "mypy>=1.10",
+]
+# Optional LLM and provider integrations. Install on demand:
+#   pip install -e .[openai]      # adds OpenAI provider
+#   pip install -e .[google]      # adds Google Gemini provider
+#   pip install -e .[claude-code] # adds Claude Code SDK
+#   pip install -e .[gitlab]      # adds GitLab support
+#   pip install -e .[jira]        # adds Jira support
+#   pip install -e .[all]         # adds everything
+openai = ["openai>=1.50"]
+google = ["google-genai>=0.3"]
+claude-code = ["claude-agent-sdk>=0.1"]
+gitlab = ["python-gitlab>=4.0"]
+jira = ["atlassian-python-api>=3.41"]
+all = [
+    "openai>=1.50",
+    "google-genai>=0.3",
+    "claude-agent-sdk>=0.1",
+    "python-gitlab>=4.0",
+    "atlassian-python-api>=3.41",
 ]
 
 [project.scripts]

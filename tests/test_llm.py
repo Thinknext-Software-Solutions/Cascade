@@ -181,7 +181,7 @@ class TestAnthropicClient:
 class TestBuildClient:
     def test_unknown_provider_raises(self):
         with pytest.raises(CascadeLLMError, match="Unknown LLM provider"):
-            build_client("openai")
+            build_client("cohere")
 
     def test_anthropic_factory(self, fake_sdk, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")

@@ -5,13 +5,16 @@ in the README. Each command is intentionally thin -- it parses args,
 calls the appropriate module, prints results. Business logic lives in
 the modules, not here.
 
-Commands (v0.1):
-    cascade init             Scaffold team-memory/ and cascade.yaml
-    cascade ingest <file>    Transcribe audio/video -> transcripts/*.yaml  (NOT YET)
-    cascade extract <file>   Transcript -> stories YAML for review
-    cascade review <file>    Interactive review of extracted stories         (STUB)
-    cascade build <file>     Approved stories -> code + tests + PR           (STUB)
-    cascade status           Show pipeline state for the current repo       (STUB)
+Commands:
+    cascade init                Scaffold team-memory/ and cascade.yaml
+    cascade configure ...       Set up credentials (LLM/VCS/issue trackers)
+    cascade ingest <file>       Transcribe audio/video -> transcripts/*.yaml
+    cascade extract <file>      Transcript -> stories YAML for review
+    cascade review <file>       Interactive review of extracted stories
+    cascade prompt "<text>"     Build directly from an ad-hoc prompt
+    cascade ticket <provider:id> Build from a tracker ticket
+    cascade build <file>        Approved stories -> code + tests + PR
+    cascade status              Show pipeline state for the current repo
 """
 
 from __future__ import annotations
@@ -27,11 +30,31 @@ from .config import DEFAULT_CONFIG_FILENAME, load_config
 from .exceptions import CascadeError
 from .extractor import extract_stories
 from .io import read_story_batch, read_transcript, write_story_batch
+from .issue_sources import (
+    SUPPORTED_ISSUE_SOURCES,
+    build_issue_source,
+    parse_issue_ref,
+    story_from_prompt,
+)
 from .languages import resolve_language
-from .llm import build_client
+from .llm import SUPPORTED_PROVIDERS as SUPPORTED_LLM_PROVIDERS, build_client_from_credentials
 from .memory import KNOWN_MEMORY_FILES, TeamMemory
-from .pipeline import build_story, get_github_token_from_env
+from .pipeline import build_story
 from .repo import PyGithubClient
+from .user_config import (
+    IssueSourceConfig,
+    LLMProviderConfig,
+    UserConfig,
+    VCSProviderConfig,
+    config_path,
+    load_user_config,
+    mask_secret,
+    resolve_issue_credentials,
+    resolve_llm_credentials,
+    resolve_vcs_credentials,
+    save_user_config,
+)
+from .vcs import SUPPORTED_VCS_PROVIDERS
 
 
 # ----------------------------------------------------------------------------
@@ -131,9 +154,15 @@ def extract(transcript_path: Path, output: Path | None, model: str | None) -> No
     """Read a transcript YAML, extract stories, write a YAML batch for review."""
     try:
         config = load_config()
+        user_cfg = load_user_config()
         transcript = read_transcript(transcript_path)
         memory = TeamMemory.load(Path.cwd() / config.memory.path)
-        llm = build_client(config.agent.provider, model=model or config.agent.model)
+        llm_creds = resolve_llm_credentials(
+            user_config=user_cfg,
+            provider=config.agent.provider,
+            model_override=model or config.agent.model,
+        )
+        llm = build_client_from_credentials(llm_creds)
 
         click.echo(
             f"  extracting from {transcript.meeting_id} "
@@ -277,14 +306,20 @@ def build(
 
     try:
         config = load_config()
+        user_cfg = load_user_config()
         language_profile = resolve_language(target_root, configured_name=language or config.language)
         memory = TeamMemory.load(target_root / config.memory.path)
-        llm = build_client(config.agent.provider, model=config.agent.model)
+        llm_creds = resolve_llm_credentials(
+            user_config=user_cfg,
+            provider=config.agent.provider,
+            model_override=config.agent.model,
+        )
+        llm = build_client_from_credentials(llm_creds)
 
         github_client = None
         if not no_pr:
-            token = get_github_token_from_env()
-            github_client = PyGithubClient(token=token)
+            vcs_creds = resolve_vcs_credentials(user_config=user_cfg, provider="github")
+            github_client = PyGithubClient(token=vcs_creds.token)
     except CascadeError as exc:
         click.echo(f"error: {exc}", err=True)
         sys.exit(1)
@@ -424,6 +459,324 @@ _STARTER_TEMPLATES: dict[str, str] = {
 
 def _starter_content_for(filename: str) -> str:
     return _STARTER_TEMPLATES.get(filename, f"# {filename}\n")
+
+
+# ----------------------------------------------------------------------------
+# configure
+# ----------------------------------------------------------------------------
+
+
+@cli.group()
+def configure() -> None:
+    """Set up credentials and defaults at ~/.config/cascade/config.yaml."""
+
+
+@configure.command("show")
+def configure_show() -> None:
+    """Show the effective user config (with secrets masked)."""
+    cfg = load_user_config()
+    click.echo(f"Config file: {config_path()}")
+    click.echo(f"Defaults:")
+    click.echo(f"  llm_provider:   {cfg.defaults.llm_provider}")
+    click.echo(f"  vcs_provider:   {cfg.defaults.vcs_provider}")
+    click.echo(f"  issue_provider: {cfg.defaults.issue_provider or '(none)'}")
+    click.echo()
+    if cfg.llm_providers:
+        click.echo("LLM providers:")
+        for name, p in cfg.llm_providers.items():
+            click.echo(
+                f"  {name}: key={mask_secret(p.api_key)} "
+                f"model={p.default_model or '(default)'} "
+                f"base_url={p.base_url or '(default)'}"
+            )
+        click.echo()
+    if cfg.vcs_providers:
+        click.echo("VCS providers:")
+        for name, p in cfg.vcs_providers.items():
+            click.echo(
+                f"  {name}: token={mask_secret(p.token)} "
+                f"base_url={p.base_url or '(default)'} "
+                f"org={p.organization or '(n/a)'}"
+            )
+        click.echo()
+    if cfg.issue_sources:
+        click.echo("Issue sources:")
+        for name, p in cfg.issue_sources.items():
+            click.echo(
+                f"  {name}: token={mask_secret(p.token)} "
+                f"base_url={p.base_url or '(default)'} "
+                f"user={p.user or '(n/a)'}"
+            )
+
+
+@configure.command("llm")
+@click.argument(
+    "provider",
+    type=click.Choice(list(SUPPORTED_LLM_PROVIDERS), case_sensitive=False),
+)
+@click.option("--key", default=None, help="API key for this provider.")
+@click.option("--model", default=None, help="Default model identifier.")
+@click.option("--base-url", default=None, help="Override the API base URL.")
+@click.option("--set-default", is_flag=True, help="Make this the default LLM provider.")
+def configure_llm(
+    provider: str, key: str | None, model: str | None, base_url: str | None, set_default: bool
+) -> None:
+    """Configure an LLM provider (e.g. `cascade configure llm openai --key sk-...`)."""
+    cfg = load_user_config()
+    existing = cfg.llm_providers.get(provider.lower(), LLMProviderConfig())
+    updated = LLMProviderConfig(
+        api_key=key if key is not None else existing.api_key,
+        default_model=model if model is not None else existing.default_model,
+        base_url=base_url if base_url is not None else existing.base_url,
+    )
+    new_providers = dict(cfg.llm_providers)
+    new_providers[provider.lower()] = updated
+    new_defaults = cfg.defaults.model_copy(
+        update={"llm_provider": provider.lower()} if set_default else {}
+    )
+    new_cfg = cfg.model_copy(update={"llm_providers": new_providers, "defaults": new_defaults})
+    save_user_config(new_cfg)
+    click.echo(f"Updated LLM provider '{provider}'.")
+    if set_default:
+        click.echo(f"Set '{provider}' as the default LLM provider.")
+
+
+@configure.command("vcs")
+@click.argument(
+    "provider",
+    type=click.Choice(list(SUPPORTED_VCS_PROVIDERS), case_sensitive=False),
+)
+@click.option("--token", default=None, help="Access token.")
+@click.option("--base-url", default=None, help="Override the API base URL.")
+@click.option("--organization", default=None, help="Organization name (Azure DevOps).")
+@click.option("--set-default", is_flag=True, help="Make this the default VCS provider.")
+def configure_vcs(
+    provider: str,
+    token: str | None,
+    base_url: str | None,
+    organization: str | None,
+    set_default: bool,
+) -> None:
+    """Configure a VCS provider (e.g. `cascade configure vcs gitlab --token ...`)."""
+    cfg = load_user_config()
+    existing = cfg.vcs_providers.get(provider.lower(), VCSProviderConfig())
+    updated = VCSProviderConfig(
+        token=token if token is not None else existing.token,
+        base_url=base_url if base_url is not None else existing.base_url,
+        organization=organization if organization is not None else existing.organization,
+    )
+    new_providers = dict(cfg.vcs_providers)
+    new_providers[provider.lower()] = updated
+    new_defaults = cfg.defaults.model_copy(
+        update={"vcs_provider": provider.lower()} if set_default else {}
+    )
+    new_cfg = cfg.model_copy(update={"vcs_providers": new_providers, "defaults": new_defaults})
+    save_user_config(new_cfg)
+    click.echo(f"Updated VCS provider '{provider}'.")
+    if set_default:
+        click.echo(f"Set '{provider}' as the default VCS provider.")
+
+
+@configure.command("issue")
+@click.argument(
+    "provider",
+    type=click.Choice(list(SUPPORTED_ISSUE_SOURCES), case_sensitive=False),
+)
+@click.option("--token", default=None, help="Access token.")
+@click.option("--base-url", default=None, help="API base URL (required for Jira).")
+@click.option("--user", default=None, help="Username/email (required for Jira).")
+@click.option("--set-default", is_flag=True, help="Make this the default issue source.")
+def configure_issue(
+    provider: str,
+    token: str | None,
+    base_url: str | None,
+    user: str | None,
+    set_default: bool,
+) -> None:
+    """Configure an issue tracker (e.g. `cascade configure issue jira --url ... --user ... --token ...`)."""
+    cfg = load_user_config()
+    existing = cfg.issue_sources.get(provider.lower(), IssueSourceConfig())
+    updated = IssueSourceConfig(
+        token=token if token is not None else existing.token,
+        base_url=base_url if base_url is not None else existing.base_url,
+        user=user if user is not None else existing.user,
+    )
+    new_sources = dict(cfg.issue_sources)
+    new_sources[provider.lower()] = updated
+    new_defaults = cfg.defaults.model_copy(
+        update={"issue_provider": provider.lower()} if set_default else {}
+    )
+    new_cfg = cfg.model_copy(update={"issue_sources": new_sources, "defaults": new_defaults})
+    save_user_config(new_cfg)
+    click.echo(f"Updated issue source '{provider}'.")
+    if set_default:
+        click.echo(f"Set '{provider}' as the default issue source.")
+
+
+# ----------------------------------------------------------------------------
+# prompt -- direct-prompt entry point
+# ----------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument("text")
+@click.option(
+    "--language",
+    default=None,
+    help="Override the language profile.",
+)
+@click.option(
+    "--base-branch",
+    default="main",
+    show_default=True,
+    help="Branch the new work branches off.",
+)
+@click.option("--no-pr", is_flag=True, help="Skip push + PR opening.")
+@click.option(
+    "--repo-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+)
+def prompt(
+    text: str,
+    language: str | None,
+    base_branch: str,
+    no_pr: bool,
+    repo_root: Path | None,
+) -> None:
+    """Build directly from an ad-hoc text prompt (no meeting, no ticket).
+
+    Example: cascade prompt "Add cursor-based pagination to /api/users"
+    """
+    target_root = (repo_root or Path.cwd()).resolve()
+    try:
+        story = story_from_prompt(text)
+        config = load_config()
+        user_cfg = load_user_config()
+        language_profile = resolve_language(
+            target_root, configured_name=language or config.language
+        )
+        memory = TeamMemory.load(target_root / config.memory.path)
+        llm_creds = resolve_llm_credentials(
+            user_config=user_cfg,
+            provider=config.agent.provider,
+            model_override=config.agent.model,
+        )
+        llm = build_client_from_credentials(llm_creds)
+
+        github_client = None
+        if not no_pr:
+            vcs_creds = resolve_vcs_credentials(user_config=user_cfg, provider="github")
+            github_client = PyGithubClient(token=vcs_creds.token)
+
+        click.echo(f"==> [{story.id}] {story.title}")
+        result = build_story(
+            story=story,
+            repo_root=target_root,
+            llm=llm,
+            language=language_profile,
+            memory=memory,
+            github_client=github_client,
+            base_branch=base_branch,
+            test_override_command=(
+                config.test_command.split() if config.test_command else None
+            ),
+            push_and_open_pr=not no_pr,
+        )
+        _print_build_result(result, no_pr=no_pr)
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
+
+
+# ----------------------------------------------------------------------------
+# ticket -- issue-tracker entry point
+# ----------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument("identifier")
+@click.option(
+    "--language",
+    default=None,
+    help="Override the language profile.",
+)
+@click.option(
+    "--base-branch",
+    default="main",
+    show_default=True,
+)
+@click.option("--no-pr", is_flag=True, help="Skip push + PR opening.")
+@click.option(
+    "--repo-root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+)
+def ticket(
+    identifier: str,
+    language: str | None,
+    base_branch: str,
+    no_pr: bool,
+    repo_root: Path | None,
+) -> None:
+    """Build from a tracker ticket: `cascade ticket <provider>:<id>`.
+
+    Examples:
+        cascade ticket github:myorg/myrepo#42
+        cascade ticket jira:PROJ-123
+        cascade ticket linear:ENG-456
+        cascade ticket azure_devops:org/proj/123
+    """
+    target_root = (repo_root or Path.cwd()).resolve()
+    try:
+        ref = parse_issue_ref(identifier)
+        user_cfg = load_user_config()
+        issue_creds = resolve_issue_credentials(
+            user_config=user_cfg, provider=ref.provider
+        )
+        source = build_issue_source(
+            provider=issue_creds.provider,
+            token=issue_creds.token,
+            base_url=issue_creds.base_url,
+            user=issue_creds.user,
+        )
+        story = source.fetch_story(ref.identifier)
+
+        config = load_config()
+        language_profile = resolve_language(
+            target_root, configured_name=language or config.language
+        )
+        memory = TeamMemory.load(target_root / config.memory.path)
+        llm_creds = resolve_llm_credentials(
+            user_config=user_cfg,
+            provider=config.agent.provider,
+            model_override=config.agent.model,
+        )
+        llm = build_client_from_credentials(llm_creds)
+
+        github_client = None
+        if not no_pr:
+            vcs_creds = resolve_vcs_credentials(user_config=user_cfg, provider="github")
+            github_client = PyGithubClient(token=vcs_creds.token)
+
+        click.echo(f"==> [{story.id}] {story.title}  (from {identifier})")
+        result = build_story(
+            story=story,
+            repo_root=target_root,
+            llm=llm,
+            language=language_profile,
+            memory=memory,
+            github_client=github_client,
+            base_branch=base_branch,
+            test_override_command=(
+                config.test_command.split() if config.test_command else None
+            ),
+            push_and_open_pr=not no_pr,
+        )
+        _print_build_result(result, no_pr=no_pr)
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
 
 
 def main() -> None:

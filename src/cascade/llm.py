@@ -271,12 +271,28 @@ def _extract_tool_input(response: Any, expected_tool_name: str) -> dict[str, Any
 # ----------------------------------------------------------------------------
 
 
-def build_client(provider: str, model: Optional[str] = None) -> LLMClient:
+SUPPORTED_PROVIDERS: tuple[str, ...] = (
+    "anthropic",
+    "openai",
+    "google",
+    "claude_code",
+)
+
+
+def build_client(
+    provider: str,
+    *,
+    model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> LLMClient:
     """Construct an LLMClient by provider name.
 
     Args:
-        provider: Provider key, currently only "anthropic".
+        provider: One of SUPPORTED_PROVIDERS.
         model: Specific model identifier, or None for the provider default.
+        api_key: API key. Most providers require this; claude_code does not.
+        base_url: Optional API endpoint override.
 
     Returns:
         An LLMClient ready to use.
@@ -284,8 +300,42 @@ def build_client(provider: str, model: Optional[str] = None) -> LLMClient:
     Raises:
         CascadeLLMError: Unknown provider or initialization failure.
     """
-    if provider == "anthropic":
-        return AnthropicClient(model=model)
+    p = provider.lower()
+    if p == "anthropic":
+        return AnthropicClient(api_key=api_key, model=model)
+    if p == "openai":
+        # Lazy import to avoid pulling in the openai SDK for users who don't need it
+        from .llm_openai import OpenAIClient
+
+        if api_key is None:
+            raise CascadeLLMError("OpenAI provider requires an API key")
+        return OpenAIClient(api_key=api_key, model=model, base_url=base_url)
+    if p == "google":
+        from .llm_google import GoogleGeminiClient
+
+        if api_key is None:
+            raise CascadeLLMError("Google Gemini provider requires an API key")
+        return GoogleGeminiClient(api_key=api_key, model=model, base_url=base_url)
+    if p == "claude_code":
+        from .llm_claude_code import ClaudeCodeClient
+
+        # claude_code uses local subscription; no api_key
+        return ClaudeCodeClient(model=model)
     raise CascadeLLMError(
-        f"Unknown LLM provider '{provider}'. Supported in v0.1: 'anthropic'."
+        f"Unknown LLM provider '{provider}'. Supported: "
+        f"{', '.join(SUPPORTED_PROVIDERS)}."
+    )
+
+
+def build_client_from_credentials(creds) -> LLMClient:
+    """Build an LLMClient from a ResolvedLLMCredentials object.
+
+    Convenience wrapper that hides the dispatch on provider name. Accepts
+    a `user_config.ResolvedLLMCredentials`.
+    """
+    return build_client(
+        provider=creds.provider,
+        model=creds.model,
+        api_key=creds.api_key,
+        base_url=creds.base_url,
     )
