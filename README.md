@@ -1,248 +1,170 @@
 # Cascade
 
-> Turn a team meeting into shipped code. Recording in, working tested pull request out — humans approving at every gate.
+> An open-source AI agent that takes a meeting recording, a tracker ticket, or a one-line prompt — and ships a tested pull request. Self-hosted. Your LLM key. Your code never leaves your org.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#roadmap)
 [![Built by ThinkNext](https://img.shields.io/badge/built%20by-ThinkNext-22d3ee.svg)](https://thinknextsoftware.com)
 
-> **Status**: Pre-alpha, building in public. Soft launch target: **2026-09-15**. Star + watch to follow along, or [join the early beta list](mailto:hello@thinknextsoftware.com?subject=Cascade%20beta).
+> **Status**: Pre-alpha, building in public. Star + watch to follow along, or [join the early beta list](mailto:hello@thinknextsoftware.com?subject=Cascade%20beta).
 
----
+## What Cascade is
 
-## What is Cascade?
-
-Cascade takes a **team meeting recording** and runs it through a structured pipeline:
+Three on-ramps. One pipeline. A pull request at the end.
 
 ```
-Meeting recording  →  Stories  →  [human review]  →  Code + Tests  →  PR
+                       INPUT                                    OUTPUT
+                       =====                                    ======
+                       meeting recording (.mp3/.mp4)            ┐
+                       tracker ticket                  ┐        │   plan → code → test
+                         (Jira / Linear /              │═══════→│════════════════════→  PR on
+                          GitHub Issues /              │        │                          GitHub /
+                          Azure Boards /               │        │   LLM:                  GitLab /
+                          GitLab Issues)               │        │   Anthropic /            Bitbucket /
+                       ad-hoc prompt                   │        │   OpenAI /               Azure DevOps
+                                                       ┘        │   Google Gemini /
+                                                                │   Claude Code (no API key) /
+                                                                │   Ollama / vLLM (self-hosted)
+                                                                ┘
 ```
 
-Every stage is grounded in your **team's shared memory** — the conventions, decisions, glossary, and constraints your team has accumulated. So the AI knows what *your team* knows, not just what's in the codebase.
+**Why it exists**: most AI dev tools assume a single starting point (your IDE), a single LLM (theirs), a single VCS (GitHub), and a single source of work (you typing). Real engineering teams aren't shaped like that. Cascade meets you where you already work.
 
-It's self-hosted, OSS, uses your own LLM key, and your code never leaves your infrastructure.
+## Differentiators
 
----
+- **Self-hosted everything.** Code stays in your CI runners. Your LLM key. Your VCS. No SaaS in the path.
+- **Bring your own AI subscription.** Already pay for Claude Code? Use the Claude Code SDK — no separate API key.
+- **Polyglot from day one.** Python, TypeScript, JavaScript, Go, Rust, Java, Ruby, C#. New languages added by appending to a registry.
+- **Human at every gate.** Cascade plans, codes, and tests — humans review and approve every merge. Designed for trust, not autonomy theatre.
+- **Team memory baked in.** A `team-memory/` directory of conventions, decisions, glossary, and prior work that every AI stage reads as grounding context.
 
-## Why Cascade exists
+## Quick start
 
-Cascade solves two real problems that today's AI dev tools ignore:
+```bash
+# 1. Install
+pip install cascade-agent                  # base
+pip install cascade-agent[all]             # + OpenAI, Google, Claude Code, GitLab, Jira
 
-### 1. The chasm between "the team talked about it" and "code shipped"
+# 2. Configure once (creds saved to ~/.config/cascade/config.yaml, chmod 0600)
+cascade configure llm anthropic --key sk-ant-xxx --set-default
+cascade configure vcs github --token ghp-xxx
+# Or use a local Claude Code subscription instead of an API key:
+cascade configure llm claude_code --set-default
 
-Teams discuss work in meetings, Slack threads, and impromptu calls. Then a single engineer has to manually translate that conversation into stories, then specs, then code, then tests. Information leaks at every transition.
-
-Cascade closes the loop. The output of a meeting *is* the input to the build pipeline.
-
-### 2. AI sessions are siloed by developer
-
-When teams use Copilot, Cursor, or Claude individually:
-- Each developer's AI session is isolated
-- Architectural decisions made last week aren't in anyone's AI context this week
-- New devs start from zero with their AI
-- Senior knowledge doesn't compound across the team
-
-**Teams collaborate in human channels — but the AI side of the modern dev workflow is single-player.** Cascade makes it team-shared.
-
----
+# 3. Use it -- pick any entry point
+cascade prompt "Add cursor pagination to /api/users with ?limit and ?after"
+cascade ticket jira:PROJ-123
+cascade ticket github:myorg/myrepo#42
+cascade ingest recordings/standup.mp3        # produces transcripts/*.yaml
+cascade extract transcripts/standup.yaml     # produces stories/*.yaml
+cascade review stories/standup.yaml          # interactive accept/edit/reject
+cascade build stories/standup.yaml           # plan → code → test → PR
+```
 
 ## How it works
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                       TEAM MEMORY LAYER                           │
-│  conventions · decisions · glossary · prior work · constraints    │
-│                     (read by every stage)                          │
-└──────────────────────────────────────────────────────────────────┘
-       ▲    ▲     ▲      ▲      ▲      ▲      ▲      ▲
-       │    │     │      │      │      │      │      │
-  ┌────┴┐ ┌─┴┐ ┌──┴──┐ ┌─┴───┐ ┌┴───┐ ┌┴───┐ ┌┴───┐ ┌─┴────┐
-  │Audio│→│TX│→│Story│→│REVW │→│PLAN│→│CODE│→│TEST│→│PR    │
-  │ /Vid│ │  │ │     │ │     │ │    │ │    │ │    │ │      │
-  └─────┘ └──┘ └─────┘ └─────┘ └────┘ └────┘ └────┘ └──────┘
-                          │
-                    HUMAN GATES HERE
-                  (approve / edit / reject
-                   each story before code gen)
+┌────────────────────────────────────────────────────────────────────┐
+│                       TEAM MEMORY LAYER                             │
+│  (conventions · decisions · glossary · prior work · constraints)    │
+└────────────────────────────────────────────────────────────────────┘
+            ▲    ▲    ▲    ▲    ▲    ▲    ▲    ▲
+            │    │    │    │    │    │    │    │  every stage reads
+            │    │    │    │    │    │    │    │  from + writes to
+            │    │    │    │    │    │    │    │
+┌───────┐ ┌─┴┐ ┌─┴┐ ┌──┴───┐ ┌┴─┐ ┌┴─┐ ┌┴─┐ ┌┴─────┐
+│ input │→│IN│→│TX│→│Stories│→│RV│→│PL│→│CD│→│PR Open│
+└───────┘ └──┘ └──┘ └───────┘ └──┘ └──┘ └──┘ └───────┘
+              ingest  extract  review plan code   PR
+                                       │
+                                       │
+                            HUMAN APPROVES EACH GATE
+                            (story review + final PR review)
 ```
 
-| Stage | What it does |
+| Stage | Module | What it does |
+|---|---|---|
+| Ingest | `transcribe.py` | Audio/video → text via Whisper (local, faster-whisper, or OpenAI API) |
+| Transcribe | (same) | Optional speaker diarization via pyannote |
+| Extract | `extractor.py` | Transcript → structured user stories with Given/When/Then acceptance criteria |
+| Review | `review.py` | Interactive accept / edit / reject / skip per story |
+| Plan | `planner.py` | Approved story → file-level implementation plan with risks + out-of-scope |
+| Code | `coder.py` | Plan → full file contents (modify/create/delete); language-aware |
+| Test | `tester.py` | Run the language's test command; capture results |
+| Repo | `repo.py` + `vcs*.py` | Branch, commit, push, open PR |
+
+## Provider matrix
+
+### LLM providers
+
+| Provider | API key needed? | Notes |
+|---|---|---|
+| Anthropic Claude | Yes | Default. Uses tool-use for structured output. |
+| OpenAI | Yes | Structured Outputs via `response_format json_schema`. Works for Azure OpenAI / OpenRouter / vLLM via `--base-url`. |
+| Google Gemini | Yes | `response_schema` with Pydantic model. |
+| Claude Code SDK | **No** | Uses your local Claude Code subscription. Zero-setup. |
+| Ollama / vLLM | No | Local self-hosted models via OpenAI-compatible API. |
+
+### VCS providers
+
+| Provider | Self-hosted supported? |
 |---|---|
-| **Ingest** | Accepts audio, video, or text. Routes to transcription if needed. |
-| **Transcribe** | Local Whisper transcription with speaker diarization (Speaker A/B/C). |
-| **Stories** | LLM extracts structured user stories with acceptance criteria, informed by team memory. |
-| **Review** | Human approves, edits, or rejects each story (CLI-interactive in v0.1). |
-| **Plan** | For each approved story: file list, approach, dependencies. |
-| **Code** | Generates code + tests on a new branch. |
-| **Test** | Runs tests. Iterates once if failures. |
-| **PR** | Opens GitHub PR linked back to the original meeting timestamp and story. |
+| GitHub | Yes (GitHub Enterprise via `--base-url`) |
+| GitLab | Yes (cloud + self-hosted) |
+| Bitbucket Cloud | Cloud only in v0.1 |
+| Azure DevOps Repos | Yes |
 
----
+### Issue trackers (for `cascade ticket`)
 
-## Quick start
+GitHub Issues · Jira (Cloud + Server) · Linear · Azure DevOps Boards · GitLab Issues
 
-> ⚠️ Pre-alpha. The commands below show the *intended* developer experience. Pieces work today; end-to-end pipeline lands by 2026-09-15.
+### Languages
 
-```bash
-# Install (eventually)
-pip install cascade-ai
+Python · TypeScript · JavaScript · Go · Rust · Java · Ruby · C#
 
-# Initialize team memory in your repo
-cascade init
-$EDITOR team-memory/conventions.md
-$EDITOR team-memory/decisions.md
-$EDITOR team-memory/glossary.md
-
-# Process a meeting recording
-cascade ingest standup-2026-09-12.mp4
-cascade extract transcripts/2026-09-12.txt
-cascade review stories/2026-09-12.yaml      # interactive
-
-# Build approved stories
-cascade build stories/2026-09-12-approved.yaml --story 1
-# → creates branch, generates code + tests, opens PR
-```
-
-Configuration via `cascade.yaml`:
-
-```yaml
-version: 1
-agent:
-  model: claude-opus-4-7
-  max_iterations: 1
-
-memory:
-  path: team-memory/
-
-paths:
-  allowed:
-    - src/**
-    - tests/**
-  disallowed:
-    - .github/**
-
-test_command: pytest
-```
-
----
-
-## The team memory layer
-
-This is what makes Cascade different from "another agent."
-
-A `team-memory/` directory in your repo holds structured markdown files that every Cascade stage reads as context:
-
-```
-team-memory/
-├── conventions.md      # coding style, naming, file layout
-├── decisions.md        # ADR-style log: what we chose and why
-├── glossary.md         # domain terms specific to this product
-├── prior-work.md       # summaries of past stories shipped
-└── constraints.md      # performance budgets, security requirements
-```
-
-When Cascade extracts stories from a meeting, generates code, or writes tests, it knows:
-- "Our team uses snake_case for Python, camelCase for TypeScript"
-- "We chose Postgres over MongoDB last quarter — don't suggest MongoDB"
-- "A 'workspace' in our app is what other tools call a 'project'"
-- "We already shipped pagination on /api/users — don't redo it"
-- "Response times under 200ms p99"
-
-**v0.1**: plain markdown, manually updated by the team. Crude but real.
-
-**v0.2+**: vector store + smart retrieval. Auto-updates from processed meetings.
-
----
+Adding a new language = add a `LanguageProfile` entry. See [`languages.py`](src/cascade/languages.py).
 
 ## Security model
 
-Same security position as Relay — built for teams that can't or won't send code to a SaaS:
+Cascade's pipeline preserves these invariants. Each one is a non-goal of the design that, if violated, is treated as a bug:
 
-- ✅ Runs entirely on your infrastructure (your machine, your CI, your servers)
-- ✅ Uses your own LLM API key
-- ✅ Code never leaves your network
-- ✅ All file changes on a new branch, never main
-- ✅ **Cascade never merges** — every PR requires human approval
-- ✅ Cascade only writes to allowed paths in `cascade.yaml`
-- ✅ Cannot modify `.github/` or its own config
+- Cascade never merges PRs; humans always approve before merge.
+- Cascade only writes to paths matching `paths.allowed` in `cascade.yaml`, minus anything in `paths.disallowed` (deny wins).
+- Cascade never modifies `.github/`, `cascade.yaml`, or `team-memory/` (configurable but disallowed by default).
+- Cascade only executes the configured `test_command` and `git` shell commands — no arbitrary shell access.
+- Source code, transcripts, and meeting recordings stay on the local machine and the configured LLM provider; nothing else.
+- User credentials are stored at `~/.config/cascade/config.yaml` with mode `0600`.
 
----
+See [SECURITY.md](SECURITY.md) for the full threat model and how to report vulnerabilities.
 
-## Comparison vs alternatives
+## Configuration
 
-| | Cursor | Devin | Aider | Linear AI | **Cascade** |
-|---|---|---|---|---|---|
-| Input modality | typed prompts | typed prompts | typed prompts | typed text | **meeting recordings** |
-| Autonomous (no constant driving) | ❌ | ✅ | ❌ | partial | ✅ |
-| Team-shared memory layer | ❌ | ❌ | ❌ | partial | ✅ |
-| Open source | ❌ | ❌ | ✅ | ❌ | ✅ |
-| Self-hosted (your infra) | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Source never leaves your org | ✅ | ❌ | ✅ | ❌ | ✅ |
+Three layers, highest wins:
 
-The combination of *meeting-as-input* + *team-memory substrate* + *OSS self-hosted* is the wedge. No tool checks all three boxes.
-
----
+1. **CLI flags** (per-call): `--language go`, `--model claude-opus-4-7`
+2. **Project config** at `./cascade.yaml`: per-repo settings, language override, path allowlists. See [`cascade.yaml.example`](cascade.yaml.example).
+3. **User config** at `~/.config/cascade/config.yaml`: credentials and personal defaults. Managed via `cascade configure`.
+4. **Environment variables** (fallback): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `JIRA_API_TOKEN`, etc.
 
 ## Roadmap
 
-| Version | Capabilities | Target |
+| Version | Target | Highlights |
 |---|---|---|
-| **v0.1** (MVP) | Audio/text input · Python only · Anthropic LLM · CLI-driven · single-story-at-a-time · markdown team memory | **2026-09-15** |
-| **v0.2** | TypeScript support · multi-story batch · OpenAI provider · vector-store team memory · cost monitoring | Q4 2026 |
-| **v0.3** | Multi-meeting collation · Slack/Linear/Notion integrations · real-time meeting capture · auto-updating team memory | Q1 2027 |
-| **v1.0** | Web UI · GitLab/Bitbucket · self-hosted LLM (Ollama, vLLM) · multi-agent specialists | Mid 2027 |
-
----
-
-## Sister project: Relay
-
-For teams that already have well-scoped issues and don't need the meeting-extraction front-end, the simpler [Relay](https://github.com/Thinknext-Software-Solutions/Relay) project is a focused Issue→PR agent. Cascade is the broader vision; Relay is one specific entry point into the build pipeline.
-
----
-
-## FAQ
-
-**Q: Why start from meetings? Why not from a typed prompt?**
-A: Because that's where the actual context lives. By the time someone types a prompt, they've already filtered, compressed, and edited the original conversation. Cascade preserves the full context.
-
-**Q: What about meeting privacy?**
-A: Everything runs locally by default — Whisper transcription is local, LLM calls go to your provider with your key. No cloud relay.
-
-**Q: How accurate is the transcription?**
-A: Whisper's `medium` model gets ~95% word accuracy on clean audio. Quality degrades with poor audio, heavy accents, or domain jargon. Cascade flags low-confidence sections for review.
-
-**Q: What if the story extraction is wrong?**
-A: Humans review every story before any code is generated. That's the entire point of the design — Cascade extracts, humans approve, then code happens.
-
-**Q: How much will it cost to run?**
-A: You pay your own LLM costs. Rough estimate for a 30-min meeting → 5 stories shipped: $10-$30 in Claude API calls plus a few cents in compute. Cost monitoring lands in v0.2.
-
-**Q: Can I use this on a private repo?**
-A: Yes. That's the primary use case.
-
-**Q: What languages will Cascade support?**
-A: v0.1 = Python only. v0.2 adds TypeScript. v1.0 expands further based on community demand.
-
----
+| **v0.1** (tech preview) | 2026-09-15 | Foundation + all 5 LLM providers + all 4 VCS providers + all 5 issue trackers + ingest/review/build pipeline |
+| v0.2 | 2026-11-15 | Whisper API quality bar, vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build |
+| v0.3 | 2027-01-15 | Real-time meeting capture, Slack/Teams source, multi-repo coordination |
+| v1.0 | 2027-04-15 | Web UI for review, fine-tuned routing, GA |
 
 ## Contributing
 
-We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
+We welcome contributions of all sizes. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-For non-trivial changes, open a GitHub Discussion first to align on direction.
-
----
+Maintainer SLA: issues responded to within **5 business days**, PRs within **3 business days**.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE). Use freely, commercially, anywhere.
 
 ---
 
-## About
-
-Cascade is built and maintained by [ThinkNext Software](https://thinknextsoftware.com) — an AI-augmented engineering and staffing firm. We use AI at every step of our own SDLC, and we ship the tools we use ourselves.
-
-If Cascade is helpful to your team, consider [working with us](https://thinknextsoftware.com#contact) on your next project.
-
-Follow along: [@ThinkNextHQ](https://twitter.com/ThinkNextHQ) · [LinkedIn](https://linkedin.com/company/thinknextsoftware) · [Blog](https://thinknextsoftware.com/blog)
+Built by [ThinkNext Software Solutions](https://thinknextsoftware.com). Have a question? [hello@thinknextsoftware.com](mailto:hello@thinknextsoftware.com).

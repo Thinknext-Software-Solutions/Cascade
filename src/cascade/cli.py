@@ -41,6 +41,8 @@ from .llm import SUPPORTED_PROVIDERS as SUPPORTED_LLM_PROVIDERS, build_client_fr
 from .memory import KNOWN_MEMORY_FILES, TeamMemory
 from .pipeline import build_story
 from .repo import PyGithubClient
+from .review import review_batch
+from .transcribe import SUPPORTED_BACKENDS as SUPPORTED_TRANSCRIBE_BACKENDS, transcribe_file
 from .user_config import (
     IssueSourceConfig,
     LLMProviderConfig,
@@ -216,12 +218,12 @@ def review(batch_path: Path) -> None:
     click.echo(f"  extracted: {batch.extracted_at.isoformat()}")
     click.echo(f"  model:     {batch.extractor_model}")
     click.echo(f"  stories:   {len(batch.stories)}")
-    click.echo()
-    for i, s in enumerate(batch.stories, 1):
-        click.echo(f"  {i:2d}. [{s.size.value}] [{s.confidence:3d}] {s.title}")
-    click.echo()
-    click.echo("(Interactive review UI lands in the next build. For now: edit the YAML")
-    click.echo("directly to set each story's status to 'approved' or 'rejected'.)")
+    # Hand off to the interactive review loop
+    try:
+        review_batch(batch_path)
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
 
 
 # ----------------------------------------------------------------------------
@@ -459,6 +461,105 @@ _STARTER_TEMPLATES: dict[str, str] = {
 
 def _starter_content_for(filename: str) -> str:
     return _STARTER_TEMPLATES.get(filename, f"# {filename}\n")
+
+
+# ----------------------------------------------------------------------------
+# ingest
+# ----------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument(
+    "source",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Where to write the transcript YAML. Defaults to "
+    "transcripts/{meeting_id}.yaml.",
+)
+@click.option(
+    "--backend",
+    type=click.Choice(list(SUPPORTED_TRANSCRIBE_BACKENDS), case_sensitive=False),
+    default="auto",
+    show_default=True,
+    help="Transcription backend.",
+)
+@click.option(
+    "--model",
+    default="base",
+    show_default=True,
+    help="Whisper model size for local backends (tiny/base/small/medium/large).",
+)
+@click.option(
+    "--language",
+    default=None,
+    help="ISO 639-1 language code (e.g. 'en') to force, or omit for auto-detect.",
+)
+@click.option(
+    "--no-diarization",
+    is_flag=True,
+    help="Skip speaker diarization (faster, single 'Speaker' label).",
+)
+@click.option(
+    "--meeting-id",
+    default=None,
+    help="Override the meeting ID. Defaults to a slug derived from the file name.",
+)
+def ingest(
+    source: Path,
+    output: Path | None,
+    backend: str,
+    model: str,
+    language: str | None,
+    no_diarization: bool,
+    meeting_id: str | None,
+) -> None:
+    """Transcribe audio/video into a structured transcript YAML.
+
+    Example: cascade ingest recordings/standup.mp3
+    """
+    try:
+        user_cfg = load_user_config()
+        # If using the openai-api backend, pull the OpenAI key from the
+        # standard credentials resolver.
+        openai_key = None
+        if backend == "openai-api":
+            llm_creds = resolve_llm_credentials(
+                user_config=user_cfg, provider="openai"
+            )
+            openai_key = llm_creds.api_key
+
+        click.echo(f"  transcribing {source}  (backend={backend}, model={model})")
+        result = transcribe_file(
+            source,
+            backend=backend,
+            model=model,
+            language=language,
+            enable_diarization=not no_diarization,
+            openai_api_key=openai_key,
+            meeting_id=meeting_id,
+        )
+
+        out_path = output or (
+            Path.cwd() / "transcripts" / f"{result.transcript.meeting_id}.yaml"
+        )
+        from .io import write_transcript
+
+        write_transcript(result.transcript, out_path)
+
+        click.echo(
+            f"  transcribed {len(result.transcript.turns)} turns "
+            f"({len(result.transcript.speakers)} speakers, "
+            f"{result.transcript.duration_seconds:.1f}s) -> {out_path}"
+        )
+        if not result.diarization_used and not no_diarization:
+            click.echo("  (diarization unavailable; all turns labeled 'Speaker')")
+    except CascadeError as exc:
+        click.echo(f"error: {exc}", err=True)
+        sys.exit(1)
 
 
 # ----------------------------------------------------------------------------

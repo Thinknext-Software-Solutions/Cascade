@@ -61,9 +61,12 @@ class TestReview:
         batch_path = tmp_path / "batch.yaml"
         write_story_batch(sample_story_batch, batch_path)
         runner = CliRunner()
-        result = runner.invoke(cli, ["review", str(batch_path)])
+        # review now delegates to the interactive review_batch; mock it
+        # so the test doesn't try to read from stdin.
+        with patch("cascade.cli.review_batch", return_value=(sample_story_batch, None)):
+            result = runner.invoke(cli, ["review", str(batch_path)])
         assert result.exit_code == 0
-        assert sample_story_batch.stories[0].title in result.output
+        assert sample_story_batch.meeting_id in result.output
         assert "claude-opus-4-7" in result.output
 
     def test_missing_file_errors(self, tmp_path):

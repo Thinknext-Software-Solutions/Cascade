@@ -245,7 +245,7 @@ LLM_ENV_KEY_NAMES: dict[str, tuple[str, ...]] = {
     "google": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
     "claude_code": (),  # uses local Claude Code subscription; no API key
     "copilot": (),  # uses local Copilot subscription; no API key
-    "ollama": (),  # local self-hosted; no API key
+    "ollama": (),  # local self-hosted; no API key (uses base_url)
 }
 
 VCS_ENV_TOKEN_NAMES: dict[str, tuple[str, ...]] = {

@@ -276,6 +276,7 @@ SUPPORTED_PROVIDERS: tuple[str, ...] = (
     "openai",
     "google",
     "claude_code",
+    "ollama",
 )
 
 
@@ -321,6 +322,10 @@ def build_client(
 
         # claude_code uses local subscription; no api_key
         return ClaudeCodeClient(model=model)
+    if p == "ollama":
+        from .llm_ollama import OllamaClient
+
+        return OllamaClient(model=model, base_url=base_url, api_key=api_key)
     raise CascadeLLMError(
         f"Unknown LLM provider '{provider}'. Supported: "
         f"{', '.join(SUPPORTED_PROVIDERS)}."
