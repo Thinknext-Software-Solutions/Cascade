@@ -2,11 +2,15 @@
 
 An open-source AI agent that takes a meeting recording, a tracker ticket, or a one-line prompt, and ships a tested pull request. Self-hosted. Uses your LLM key. Your code never leaves your org.
 
+[![PyPI](https://img.shields.io/pypi/v/cascade-agent.svg?label=PyPI&color=22c55e)](https://pypi.org/project/cascade-agent/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#roadmap)
+[![Status](https://img.shields.io/badge/status-alpha-22c55e.svg)](#roadmap)
+[![Docs](https://img.shields.io/badge/docs-cascadeagent.dev-22c55e.svg)](https://cascadeagent.dev)
 [![Built by ThinkNext](https://img.shields.io/badge/built%20by-ThinkNext-22d3ee.svg)](https://thinknextsoftware.com)
 
-> **Status**: pre-alpha, building in public. Star and watch to follow along, or [join the early beta list](mailto:hello@thinknextsoftware.com?subject=Cascade%20beta).
+> **Status**: alpha, live on PyPI as `cascade-agent==0.1.0a1`. The pipeline works end-to-end across 5 LLM providers, 4 VCS providers, 5 issue trackers, and 8 languages. We are road-testing against real repos before promoting to a stable release. Bug reports very welcome.
+>
+> **Install**: `pip install cascade-agent` · **Docs**: [cascadeagent.dev](https://cascadeagent.dev) · **Issues**: [GitHub](https://github.com/Thinknext-Software-Solutions/Cascade/issues)
 
 ## Why Cascade exists
 
@@ -237,12 +241,13 @@ Four layers, highest wins:
 
 ## Roadmap
 
-| Version | Target | Highlights |
+| Version | Status | Highlights |
 |---|---|---|
-| **v0.1** (tech preview) | 2026-09-15 | Foundation, all 5 LLM providers, all 4 VCS providers, all 5 issue trackers, ingest / review / build pipeline |
-| v0.2 | 2026-11-15 | Quality bar via real-world dogfooding, vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build |
-| v0.3 | 2027-01-15 | Real-time meeting capture, Slack and Teams as sources, multi-repo coordination |
-| v1.0 | 2027-04-15 | Web UI for review, fine-tuned routing, GA |
+| **v0.1.0a1** | Shipped (2026-05-25) | Live on PyPI. Foundation, all 5 LLM providers, all 4 VCS providers, all 5 issue trackers, ingest / review / build pipeline, Studio web dashboard, cost visibility, streaming progress |
+| v0.1.0 (stable) | Target 2026-09-15 | Real-world dogfooding feedback rolled in, bug fixes from early adopters, API stabilized |
+| v0.2 | Target 2026-11-15 | Vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build improvements |
+| v0.3 | Target 2027-01-15 | Real-time meeting capture, Slack and Teams as sources, multi-repo coordination |
+| v1.0 | Target 2027-04-15 | Web UI for review fully expanded, fine-tuned routing, GA |
 
 ## Contributing
 
