@@ -215,10 +215,12 @@ def _pick_backend(*, prefer_api: bool) -> str:
     except ImportError:
         pass
     raise CascadeTranscriptionError(
-        "No transcription backend available. Install one of:\n"
-        "  pip install faster-whisper      (recommended; fast)\n"
-        "  pip install openai-whisper      (slower but well-tested)\n"
-        "  Or set backend='openai-api' with an OpenAI API key."
+        "No transcription backend available. Install the ingest extra:\n"
+        "  pip install 'cascade-agent[ingest]'   (recommended; bundles whisper + diarization)\n"
+        "Or install a backend directly:\n"
+        "  pip install faster-whisper            (fastest CPU option)\n"
+        "  pip install openai-whisper            (well-tested)\n"
+        "Or set backend='openai-api' with an OpenAI API key."
     )
 
 

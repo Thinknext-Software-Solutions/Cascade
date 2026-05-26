@@ -1,6 +1,6 @@
 [project]
-name = "cascade-ai"
-version = "0.0.1"
+name = "cascade-agent"
+version = "0.1.0a1"
 description = "Turn a team meeting into shipped code. Recording in, working tested PR out, humans approving at every gate."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -10,22 +10,27 @@ authors = [
 ]
 keywords = ["ai", "agent", "meeting-transcription", "code-generation", "team-knowledge", "sdlc"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development",
+    "Topic :: Software Development :: Code Generators",
+    "Environment :: Console",
 ]
 
+# The base install stays lean: just the CLI, Anthropic, GitHub, and the
+# core orchestration. Heavy ML deps (Whisper for ingest), other LLM
+# providers, other VCS providers, and the Studio web UI all live in
+# optional extras so first-time `pip install cascade-agent` finishes in
+# under 30 seconds.
 dependencies = [
     "anthropic>=0.40.0",
     "click>=8.1.0",
     "pydantic>=2.0",
     "PyGithub>=2.0",
     "PyYAML>=6.0",
-    "openai-whisper>=20231117",
-    "pyannote.audio>=3.1",
     "requests>=2.31",
     "rich>=13.0",
 ]
@@ -37,14 +42,22 @@ dev = [
     "black>=24.0",
     "ruff>=0.5",
     "mypy>=1.10",
+    "build>=1.0",
+    "twine>=5.0",
 ]
-# Optional LLM and provider integrations. Install on demand:
-#   pip install -e .[openai]      # adds OpenAI provider
-#   pip install -e .[google]      # adds Google Gemini provider
-#   pip install -e .[claude-code] # adds Claude Code SDK
-#   pip install -e .[gitlab]      # adds GitLab support
-#   pip install -e .[jira]        # adds Jira support
-#   pip install -e .[all]         # adds everything
+# Optional integrations. Install on demand:
+#   pip install "cascade-agent[ingest]"      # Whisper + diarization for cascade ingest
+#   pip install "cascade-agent[openai]"      # OpenAI provider
+#   pip install "cascade-agent[google]"      # Google Gemini provider
+#   pip install "cascade-agent[claude-code]" # Claude Code SDK
+#   pip install "cascade-agent[gitlab]"      # GitLab support
+#   pip install "cascade-agent[jira]"        # Jira support
+#   pip install "cascade-agent[studio]"      # Web dashboard (FastAPI + uvicorn)
+#   pip install "cascade-agent[all]"         # Everything except ingest (ingest is huge)
+ingest = [
+    "openai-whisper>=20231117",
+    "pyannote.audio>=3.1",
+]
 openai = ["openai>=1.50"]
 google = ["google-genai>=0.3"]
 claude-code = ["claude-agent-sdk>=0.1"]
@@ -57,6 +70,8 @@ studio = [
     "sqlmodel>=0.0.22",
     "python-multipart>=0.0.9",
 ]
+# `all` deliberately omits `ingest` to keep installs reasonable. Users
+# who want meeting transcription pull `[all,ingest]` explicitly.
 all = [
     "openai>=1.50",
     "google-genai>=0.3",
@@ -70,21 +85,32 @@ all = [
     "python-multipart>=0.0.9",
 ]
 
-[tool.hatch.build]
-# Include the bundled Studio frontend in built wheels so `cascade ui`
-# serves the real UI from a pip install.
+[tool.hatch.build.targets.wheel]
+# The package lives under src/, so hatch needs to be told explicitly.
+# The Studio static bundle (src/cascade/studio/static/) is bundled with
+# the package automatically by hatch's package discovery. It's
+# regenerated from the cascade-studio repo before each release with
+# `npm run build && cp -r out ...`.
+packages = ["src/cascade"]
+artifacts = ["src/cascade/studio/static/**/*"]
+
+[tool.hatch.build.targets.sdist]
 include = [
-    "src/cascade/**/*.py",
-    "src/cascade/studio/static/**/*",
+    "src/cascade",
+    "README.md",
+    "LICENSE",
+    "pyproject.toml",
 ]
 
 [project.scripts]
 cascade = "cascade.cli:main"
 
 [project.urls]
-Homepage = "https://thinknextsoftware.com"
+Homepage = "https://cascadeagent.dev"
+Documentation = "https://cascadeagent.dev"
 Repository = "https://github.com/Thinknext-Software-Solutions/Cascade"
 Issues = "https://github.com/Thinknext-Software-Solutions/Cascade/issues"
+Changelog = "https://github.com/Thinknext-Software-Solutions/Cascade/releases"
 
 [build-system]
 requires = ["hatchling"]

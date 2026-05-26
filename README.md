@@ -51,8 +51,10 @@ A handful of choices set Cascade apart from the rest of the agent landscape:
 ## Quick start
 
 ```bash
-pip install cascade-agent              # base install
-pip install cascade-agent[all]         # adds optional providers + Studio web dashboard
+# Alpha release. Use --pre to opt in to pre-release versions:
+pip install --pre cascade-agent                 # base install (anthropic + github + cli)
+pip install --pre "cascade-agent[all]"          # adds non-default providers + Studio web dashboard
+pip install --pre "cascade-agent[all,ingest]"   # also adds meeting transcription (whisper)
 
 cascade init                           # scaffold cascade.yaml + smart-seeded team-memory/
 
@@ -138,8 +140,8 @@ Multiple fixes ranked by likelihood, concrete commands ready to paste, and a poi
 Cascade ships with a web UI that surfaces the same operations as the CLI in a friendlier interface: visual story review, build history, provider config forms, and a team-memory editor with markdown preview.
 
 ```bash
-pip install cascade-agent[studio]      # adds FastAPI + uvicorn
-cascade ui                              # starts at http://localhost:8000
+pip install --pre "cascade-agent[studio]"   # adds FastAPI + uvicorn
+cascade ui                                  # starts at http://localhost:8000
 ```
 
 The dashboard runs locally. No remote service, no auth required for single-user mode, your code never leaves your machine. The frontend ships pre-built inside the pip package; no Node.js install needed at runtime.

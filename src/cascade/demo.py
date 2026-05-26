@@ -108,6 +108,11 @@ def create_demo_workspace(language: LanguageProfile, root: Path) -> Path:
         'build-backend = "setuptools.build_meta"\n'
         "\n[tool.setuptools.packages.find]\n"
         'where = ["src"]\n'
+        # Without this, pytest can't import cascade_demo from src/ unless
+        # the workspace is pip-installed. Adding pythonpath here means
+        # `pytest` Just Works from a fresh demo workspace.
+        "\n[tool.pytest.ini_options]\n"
+        'pythonpath = ["src"]\n'
     )
     (root / "src").mkdir(exist_ok=True)
     (root / "src" / "cascade_demo").mkdir(exist_ok=True)
