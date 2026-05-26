@@ -18,7 +18,10 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .progress import ProgressReporter
 
 from .coder import generate_code
 from .exceptions import CascadeError
@@ -140,7 +143,7 @@ def run_demo(
     llm: LLMClient,
     language: Optional[LanguageProfile] = None,
     keep_workspace: bool = False,
-    on_stage: Optional[Callable[[str, str], None]] = None,
+    progress: Optional["ProgressReporter"] = None,
 ) -> DemoResult:
     """Run a built-in toy story through the pipeline end-to-end.
 
@@ -149,8 +152,8 @@ def run_demo(
         language: Language profile to use; defaults to Python.
         keep_workspace: If True, don't clean up the temp directory at the end.
             Useful for debugging when something fails.
-        on_stage: Optional callback ``(stage_name, status_message)`` invoked
-            at the start of each stage. Lets the CLI print progress.
+        progress: Optional ProgressReporter; defaults to silent NoopProgress.
+            The CLI passes a RichProgress to get animated spinners.
 
     Returns:
         A DemoResult with the plan, code change, test result, and the
@@ -160,60 +163,60 @@ def run_demo(
         CascadeError: If any stage fails. The exception preserves the
             workspace if keep_workspace=True so the user can inspect it.
     """
-    profile = language or PYTHON
+    from .progress import NoopProgress, ProgressReporter
 
-    def _notify(stage: str, msg: str) -> None:
-        if on_stage is not None:
-            on_stage(stage, msg)
+    profile = language or PYTHON
+    progress = progress or NoopProgress()
 
     # Create the disposable workspace
     workspace = Path(tempfile.mkdtemp(prefix="cascade-try-"))
-    _notify("workspace", f"created at {workspace}")
 
     try:
-        create_demo_workspace(profile, workspace)
+        with progress.stage("setup", "creating disposable workspace") as p:
+            create_demo_workspace(profile, workspace)
+            p.succeed(f"workspace at {workspace.name}")
 
         # PLAN
-        _notify("plan", "asking LLM to plan the change")
-        repo_summary = scan_repo(workspace, profile)
-        plan_result = plan_story(
-            story=TOY_STORY,
-            llm=llm,
-            language=profile,
-            memory=None,
-            repo_summary=repo_summary,
-            max_output_tokens=4096,
-        )
-        plan = plan_result.plan
-        _notify("plan", f"got {len(plan.files)} file(s) to change")
+        with progress.stage("plan", "asking LLM to plan the change") as p:
+            repo_summary = scan_repo(workspace, profile)
+            plan_result = plan_story(
+                story=TOY_STORY,
+                llm=llm,
+                language=profile,
+                memory=None,
+                repo_summary=repo_summary,
+                max_output_tokens=4096,
+            )
+            plan = plan_result.plan
+            p.succeed(f"{len(plan.files)} file(s) to change")
 
         # CODE
-        _notify("code", "asking LLM to write the code + tests")
-        code_result = generate_code(
-            story=TOY_STORY,
-            plan=plan,
-            llm=llm,
-            language=profile,
-            repo_root=workspace,
-            memory=None,
-            max_output_tokens=8192,
-        )
-        change = code_result.change
-        _notify("code", f"generated {len(change.files)} file(s)")
+        with progress.stage("code", "asking LLM to write the code + tests") as p:
+            code_result = generate_code(
+                story=TOY_STORY,
+                plan=plan,
+                llm=llm,
+                language=profile,
+                repo_root=workspace,
+                memory=None,
+                max_output_tokens=8192,
+            )
+            change = code_result.change
+            p.succeed(f"{len(change.files)} file(s) generated")
 
         # APPLY
-        _notify("apply", "writing files to disk")
-        from .repo import apply_code_change
+        with progress.stage("apply", "writing files to disk"):
+            from .repo import apply_code_change
 
-        apply_code_change(workspace, change)
+            apply_code_change(workspace, change)
 
         # TEST -- skip if pytest isn't installed; the user can install it
-        _notify("test", "running the test suite")
-        test_result = run_tests(workspace, profile, timeout_seconds=60.0)
-        _notify(
-            "test",
-            f"{'PASSED' if test_result.passed else 'FAILED'} ({test_result.summary})",
-        )
+        with progress.stage("test", "running the test suite") as p:
+            test_result = run_tests(workspace, profile, timeout_seconds=60.0)
+            if test_result.passed:
+                p.succeed(test_result.summary or "passed")
+            else:
+                p.fail(test_result.summary or "failed")
 
         success = test_result.passed
         total_in = plan_result.usage.input_tokens + code_result.usage.input_tokens

@@ -22,6 +22,7 @@ from .llm import LLMClient
 from .memory import TeamMemory
 from .plan_schemas import CodeChange, Plan, PullRequestRef, TestResult
 from .planner import plan_story
+from .progress import NoopProgress, ProgressReporter
 from .repo import (
     GitHubClient,
     apply_code_change,
@@ -71,6 +72,7 @@ def build_story(
     base_branch: str = "main",
     test_override_command: Optional[list[str]] = None,
     push_and_open_pr: bool = True,
+    progress: Optional[ProgressReporter] = None,
 ) -> BuildResult:
     """End-to-end: take an approved story and ship a PR.
 
@@ -112,73 +114,93 @@ def build_story(
             "github_client is required when push_and_open_pr=True"
         )
 
+    progress = progress or NoopProgress()
     ensure_clean_working_tree(repo_root)
     starting_branch = current_branch(repo_root)
     logger.info("pipeline.start", extra={"story_id": story.id, "branch": starting_branch})
 
     # Step 2: plan
-    repo_summary = scan_repo(repo_root, language)
-    plan_result = plan_story(
-        story=story,
-        llm=llm,
-        language=language,
-        memory=memory,
-        repo_summary=repo_summary,
-    )
+    with progress.stage("plan", "asking LLM to plan the change") as p:
+        repo_summary = scan_repo(repo_root, language)
+        plan_result = plan_story(
+            story=story,
+            llm=llm,
+            language=language,
+            memory=memory,
+            repo_summary=repo_summary,
+        )
+        p.succeed(f"{len(plan_result.plan.files)} file(s) to change")
 
     # Step 3: code
-    code_result = generate_code(
-        story=story,
-        plan=plan_result.plan,
-        llm=llm,
-        language=language,
-        repo_root=repo_root,
-        memory=memory,
-    )
+    with progress.stage("code", "writing code + tests") as p:
+        code_result = generate_code(
+            story=story,
+            plan=plan_result.plan,
+            llm=llm,
+            language=language,
+            repo_root=repo_root,
+            memory=memory,
+        )
+        p.succeed(f"{len(code_result.change.files)} file(s) generated")
 
     # Step 4: branch
     branch = safe_branch_name(story.id, story.title)
-    create_branch(repo_root, branch, base=base_branch)
-    logger.info("pipeline.branch_created", extra={"branch": branch})
+    with progress.stage("branch", f"creating {branch}"):
+        create_branch(repo_root, branch, base=base_branch)
+        logger.info("pipeline.branch_created", extra={"branch": branch})
 
     # Step 5: apply
-    touched = apply_code_change(repo_root, code_result.change)
-    logger.info("pipeline.applied", extra={"file_count": len(touched)})
+    with progress.stage("apply", "writing files to disk") as p:
+        touched = apply_code_change(repo_root, code_result.change)
+        logger.info("pipeline.applied", extra={"file_count": len(touched)})
+        p.succeed(f"{len(touched)} file(s) written")
 
     # Step 6: install (best effort -- log but don't fail the pipeline if missing)
-    try:
-        install_result = install_dependencies(repo_root, language)
-        if not install_result.passed:
-            logger.warning(
-                "pipeline.install_failed",
-                extra={"command": install_result.command},
+    with progress.stage("install", "installing dependencies") as p:
+        try:
+            install_result = install_dependencies(repo_root, language)
+            if not install_result.passed:
+                logger.warning(
+                    "pipeline.install_failed",
+                    extra={"command": install_result.command},
+                )
+                p.fail("dependency install failed")
+            else:
+                p.succeed(install_result.summary or "ok")
+        except CascadeError as exc:
+            logger.warning("pipeline.install_skipped", extra={"reason": str(exc)})
+            install_result = TestResult(
+                passed=True,
+                exit_code=0,
+                duration_seconds=0,
+                command="(skipped: install tool not available)",
+                summary="skipped",
             )
-    except CascadeError as exc:
-        logger.warning("pipeline.install_skipped", extra={"reason": str(exc)})
-        install_result = TestResult(
-            passed=True,
-            exit_code=0,
-            duration_seconds=0,
-            command="(skipped: install tool not available)",
-            summary="skipped",
-        )
+            p.succeed("skipped (install tool not on PATH)")
 
     # Step 7: test
-    test_result = run_tests(
-        repo_root,
-        language,
-        override_command=test_override_command,
-    )
+    with progress.stage("test", f"running {' '.join(language.test_command)}") as p:
+        test_result = run_tests(
+            repo_root,
+            language,
+            override_command=test_override_command,
+        )
+        if test_result.passed:
+            p.succeed(test_result.summary or "passed")
+        else:
+            p.fail(test_result.summary or f"failed (exit {test_result.exit_code})")
 
     # Step 8: commit
-    commit_message = _build_commit_message(story, code_result.change)
-    commit_sha = stage_and_commit(repo_root, touched, commit_message)
-    if commit_sha is None:
-        raise CascadeRepoError(
-            "Nothing to commit -- the code change resulted in no working-tree "
-            "diff. The coder may have generated identical content."
-        )
-    logger.info("pipeline.committed", extra={"sha": commit_sha})
+    with progress.stage("commit", "committing the change") as p:
+        commit_message = _build_commit_message(story, code_result.change)
+        commit_sha = stage_and_commit(repo_root, touched, commit_message)
+        if commit_sha is None:
+            raise CascadeRepoError(
+                "Nothing to commit -- the code change resulted in no working-tree "
+                "diff. The coder may have generated identical content."
+            )
+        logger.info("pipeline.committed", extra={"sha": commit_sha})
+        p.succeed(f"{commit_sha[:8]}")
 
     # Aggregate LLM cost across plan + code stages for this story
     total_in = plan_result.usage.input_tokens + code_result.usage.input_tokens
@@ -203,24 +225,27 @@ def build_story(
         )
 
     # Step 9: push
-    push_branch(repo_root, branch)
-    logger.info("pipeline.pushed", extra={"branch": branch})
+    with progress.stage("push", f"pushing {branch}"):
+        push_branch(repo_root, branch)
+        logger.info("pipeline.pushed", extra={"branch": branch})
 
     # Step 10: open PR
-    owner, repo = detect_github_repo(repo_root)
-    pr = github_client.open_pull_request(  # type: ignore[union-attr]
-        owner=owner,
-        repo=repo,
-        head=branch,
-        base=base_branch,
-        title=_pr_title(story),
-        body=build_pr_body(
-            story=story,
-            change=code_result.change,
-            test_result=test_result,
-        ),
-    )
-    logger.info("pipeline.pr_opened", extra={"url": pr.url, "number": pr.number})
+    with progress.stage("pr", "opening pull request") as p:
+        owner, repo = detect_github_repo(repo_root)
+        pr = github_client.open_pull_request(  # type: ignore[union-attr]
+            owner=owner,
+            repo=repo,
+            head=branch,
+            base=base_branch,
+            title=_pr_title(story),
+            body=build_pr_body(
+                story=story,
+                change=code_result.change,
+                test_result=test_result,
+            ),
+        )
+        logger.info("pipeline.pr_opened", extra={"url": pr.url, "number": pr.number})
+        p.succeed(f"#{pr.number}")
 
     return BuildResult(
         story=story,

@@ -103,6 +103,16 @@ For multi-story builds, a session total prints at the end:
 
 And `cascade build --max-cost 5.00` aborts between stories if cumulative cost would exceed your budget. Self-hosted providers (Claude Code, Ollama) report `free` because the cost is covered by your subscription or local resources.
 
+## Streaming progress
+
+LLM calls can take 20-60 seconds. Instead of silent terminals, Cascade prints animated per-stage spinners as the pipeline moves through `plan -> code -> apply -> install -> test -> commit -> push -> PR`, with a checkmark and short summary at the end of each stage. Works for `cascade build`, `prompt`, `ticket`, `try`, and `extract`.
+
+For CI runs, scripts, or anything non-interactive, pass `-q` / `--quiet` to suppress the animation:
+
+```
+cascade --quiet build stories/standup.yaml
+```
+
 ## Error messages that actually help
 
 When something goes wrong, Cascade tells you what happened AND what to try next. No stack traces for known failure modes.

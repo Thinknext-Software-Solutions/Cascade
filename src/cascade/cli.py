@@ -86,12 +86,29 @@ def _setup_logging(verbose: bool) -> None:
 @click.group()
 @click.version_option(__version__, prog_name="cascade")
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug-level logs.")
+@click.option(
+    "-q",
+    "--quiet",
+    is_flag=True,
+    help="Suppress animated progress output (useful for CI / non-interactive runs).",
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool) -> None:
+def cli(ctx: click.Context, verbose: bool, quiet: bool) -> None:
     """Cascade: turn a team meeting into shipped code."""
     _setup_logging(verbose)
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
+    ctx.obj["quiet"] = quiet
+
+
+def _make_progress(ctx: click.Context):
+    """Build the right ProgressReporter for the current CLI invocation."""
+    from .progress import NoopProgress, RichProgress
+
+    quiet = bool(ctx.obj.get("quiet", False))
+    if quiet:
+        return NoopProgress()
+    return RichProgress()
 
 
 # ----------------------------------------------------------------------------
@@ -180,8 +197,15 @@ def init(force: bool, no_seed: bool) -> None:
     default=None,
     help="Override LLM model from cascade.yaml.",
 )
-def extract(transcript_path: Path, output: Path | None, model: str | None) -> None:
+@click.pass_context
+def extract(
+    ctx: click.Context,
+    transcript_path: Path,
+    output: Path | None,
+    model: str | None,
+) -> None:
     """Read a transcript YAML, extract stories, write a YAML batch for review."""
+    progress = _make_progress(ctx)
     try:
         config = load_config()
         user_cfg = load_user_config()
@@ -199,13 +223,15 @@ def extract(transcript_path: Path, output: Path | None, model: str | None) -> No
             f"({len(transcript.turns)} turns, {len(memory.non_empty_files)} memory files)"
         )
 
-        result = extract_stories(
-            transcript=transcript,
-            llm=llm,
-            memory=memory,
-            memory_char_budget=config.memory.max_chars_per_call,
-            temperature=config.agent.temperature,
-        )
+        with progress.stage("extract", "asking LLM to extract stories") as p:
+            result = extract_stories(
+                transcript=transcript,
+                llm=llm,
+                memory=memory,
+                memory_char_budget=config.memory.max_chars_per_call,
+                temperature=config.agent.temperature,
+            )
+            p.succeed(f"{len(result.batch.stories)} stories")
 
         out_path = output or (
             Path.cwd() / "stories" / f"{transcript.meeting_id}.yaml"
@@ -307,7 +333,9 @@ def review(batch_path: Path) -> None:
     "threshold, remaining stories are skipped. No effect on free providers "
     "(claude_code, ollama).",
 )
+@click.pass_context
 def build(
+    ctx: click.Context,
     batch_path: Path,
     story_index: int | None,
     language: str | None,
@@ -321,6 +349,7 @@ def build(
     Runs the full pipeline per approved story: plan -> code -> apply -> test
     -> commit -> push -> PR. Stops on first failure with an actionable error.
     """
+    progress = _make_progress(ctx)
     try:
         batch = read_story_batch(batch_path)
     except CascadeError as exc:
@@ -404,6 +433,7 @@ def build(
                     config.test_command.split() if config.test_command else None
                 ),
                 push_and_open_pr=not no_pr,
+                progress=progress,
             )
         except CascadeError as exc:
             click.echo(f"  failed: {exc}", err=True)
@@ -815,7 +845,9 @@ def configure_issue(
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
 )
+@click.pass_context
 def prompt(
+    ctx: click.Context,
     text: str,
     language: str | None,
     base_branch: str,
@@ -826,6 +858,7 @@ def prompt(
 
     Example: cascade prompt "Add cursor-based pagination to /api/users"
     """
+    progress = _make_progress(ctx)
     target_root = (repo_root or Path.cwd()).resolve()
     try:
         story = story_from_prompt(text)
@@ -860,6 +893,7 @@ def prompt(
                 config.test_command.split() if config.test_command else None
             ),
             push_and_open_pr=not no_pr,
+            progress=progress,
         )
         _print_build_result(result, no_pr=no_pr)
     except CascadeError as exc:
@@ -890,7 +924,9 @@ def prompt(
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
 )
+@click.pass_context
 def ticket(
+    ctx: click.Context,
     identifier: str,
     language: str | None,
     base_branch: str,
@@ -905,6 +941,7 @@ def ticket(
         cascade ticket linear:ENG-456
         cascade ticket azure_devops:org/proj/123
     """
+    progress = _make_progress(ctx)
     target_root = (repo_root or Path.cwd()).resolve()
     try:
         ref = parse_issue_ref(identifier)
@@ -950,6 +987,7 @@ def ticket(
                 config.test_command.split() if config.test_command else None
             ),
             push_and_open_pr=not no_pr,
+            progress=progress,
         )
         _print_build_result(result, no_pr=no_pr)
     except CascadeError as exc:
@@ -1041,7 +1079,8 @@ def doctor(repo_root: Path | None) -> None:
     help="Don't delete the temp directory after the run. Useful for inspecting "
     "what Cascade generated.",
 )
-def try_command(keep_workspace: bool) -> None:
+@click.pass_context
+def try_command(ctx: click.Context, keep_workspace: bool) -> None:
     """Run a built-in toy story end-to-end to verify the pipeline works.
 
     Creates a disposable Python project in a temp directory, asks Cascade
@@ -1051,6 +1090,7 @@ def try_command(keep_workspace: bool) -> None:
     This is the recommended thing to run right after `cascade configure`
     to know that your setup will work before you bet on it.
     """
+    progress = _make_progress(ctx)
     try:
         user_cfg = load_user_config()
         cfg = load_config()
@@ -1069,14 +1109,11 @@ def try_command(keep_workspace: bool) -> None:
     click.echo(f"Running cascade try with {llm.provider_name} / {llm.model}")
     click.echo("-" * 60)
 
-    def _on_stage(stage: str, message: str) -> None:
-        click.echo(f"  {click.style(stage:=stage[:8].ljust(8), fg='cyan')}  {message}")
-
     try:
         result = run_demo(
             llm=llm,
             keep_workspace=keep_workspace,
-            on_stage=_on_stage,
+            progress=progress,
         )
     except CascadeError as exc:
         click.echo()

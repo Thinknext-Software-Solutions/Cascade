@@ -12,6 +12,7 @@ from cascade.exceptions import CascadeError
 from cascade.languages import GO, PYTHON
 from cascade.llm import LLMClient, LLMResponse, LLMUsage
 from cascade.plan_schemas import CodeChange, FileAction, FileChange, FilePlan, Plan
+from cascade.progress import RecordingProgress
 from cascade.schemas import StorySize, StoryStatus
 
 
@@ -118,24 +119,18 @@ class TestRunDemo:
         plan, change = _hello_plan_and_change()
         llm = FakeLLM(plan=plan, change=change)
 
-        events: list[tuple[str, str]] = []
-
-        def collect(stage: str, msg: str) -> None:
-            events.append((stage, msg))
-
-        result = run_demo(llm=llm, on_stage=collect, keep_workspace=True)
-        # Cleanup since we asked to keep
+        recorder = RecordingProgress()
+        result = run_demo(llm=llm, progress=recorder, keep_workspace=True)
         try:
             assert result.plan.summary == plan.summary
             assert len(result.code_change.files) == 2
-            # Test execution result depends on pytest being available + the
-            # generated code actually running. With the FakeLLM producing
-            # valid hello(), tests should pass.
             assert result.test_result.passed is True
             assert result.success is True
-            # We notified at every stage
-            stages = {stage for stage, _ in events}
-            assert {"workspace", "plan", "code", "apply", "test"}.issubset(stages)
+            # Every stage was reported as started and as succeeded
+            expected = {"setup", "plan", "code", "apply", "test"}
+            assert expected.issubset(set(recorder.stages_started()))
+            assert expected.issubset(set(recorder.stages_succeeded()))
+            assert recorder.stages_failed() == []
         finally:
             shutil.rmtree(result.workspace, ignore_errors=True)
 
