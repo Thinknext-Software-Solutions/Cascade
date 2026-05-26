@@ -103,6 +103,26 @@ For multi-story builds, a session total prints at the end:
 
 And `cascade build --max-cost 5.00` aborts between stories if cumulative cost would exceed your budget. Self-hosted providers (Claude Code, Ollama) report `free` because the cost is covered by your subscription or local resources.
 
+## Error messages that actually help
+
+When something goes wrong, Cascade tells you what happened AND what to try next. No stack traces for known failure modes.
+
+```
+error: No API key configured for LLM provider 'anthropic'
+
+  How to fix:
+    * Set it now: cascade configure llm anthropic --key <YOUR_KEY>
+    * Or export the env var: export ANTHROPIC_API_KEY=<YOUR_KEY>
+    * Or use Claude Code instead (no API key needed):
+      cascade configure llm claude_code --set-default
+    * Or use a local model with Ollama (no API key needed):
+      cascade configure llm ollama --model llama3.1 --set-default
+
+  Learn more: cascade doctor
+```
+
+Multiple fixes ranked by likelihood, concrete commands ready to paste, and a pointer to a deeper diagnostic when none of them fit. Inspired by Rust's compiler diagnostics.
+
 ## Cascade Studio (the web dashboard)
 
 Cascade ships with a web UI that surfaces the same operations as the CLI in a friendlier interface: visual story review, build history, provider config forms, and a team-memory editor with markdown preview.
