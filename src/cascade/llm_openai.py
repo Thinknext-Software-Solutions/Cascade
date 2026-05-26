@@ -132,7 +132,7 @@ class OpenAIClient(LLMClient):
             ) from exc
 
         usage_obj = getattr(response, "usage", None)
-        usage = LLMUsage(
+        usage = LLMUsage.build(
             input_tokens=getattr(usage_obj, "prompt_tokens", 0) if usage_obj else 0,
             output_tokens=getattr(usage_obj, "completion_tokens", 0) if usage_obj else 0,
             model=self._model,

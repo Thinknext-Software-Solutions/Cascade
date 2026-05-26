@@ -121,7 +121,7 @@ class GoogleGeminiClient(LLMClient):
 
         # Token counting from usage_metadata
         usage_meta = getattr(response, "usage_metadata", None)
-        usage = LLMUsage(
+        usage = LLMUsage.build(
             input_tokens=getattr(usage_meta, "prompt_token_count", 0) if usage_meta else 0,
             output_tokens=getattr(usage_meta, "candidates_token_count", 0) if usage_meta else 0,
             model=self._model,

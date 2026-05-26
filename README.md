@@ -87,6 +87,22 @@ Cascade includes two commands designed to remove the "is this thing working?" an
 
 Run `cascade init` to scaffold a project; the team-memory files come **pre-seeded** with sensible defaults based on the language detected in your repo (Python projects get pytest conventions, Go projects get gofmt conventions, etc.). Edit to personalize.
 
+## Cost visibility
+
+Every LLM call surfaces its cost in the CLI output. After `cascade extract`, `cascade build`, or `cascade try`:
+
+```
+  cost: $0.12 (8,234 in / 2,156 out tokens, anthropic/claude-opus-4-7)
+```
+
+For multi-story builds, a session total prints at the end:
+
+```
+  session: 4 stories built, 8 LLM calls, $0.84
+```
+
+And `cascade build --max-cost 5.00` aborts between stories if cumulative cost would exceed your budget. Self-hosted providers (Claude Code, Ollama) report `free` because the cost is covered by your subscription or local resources.
+
 ## Cascade Studio (the web dashboard)
 
 Cascade ships with a web UI that surfaces the same operations as the CLI in a friendlier interface: visual story review, build history, provider config forms, and a team-memory editor with markdown preview.

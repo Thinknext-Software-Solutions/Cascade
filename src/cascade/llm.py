@@ -21,11 +21,12 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from .cost import compute_cost
 from .exceptions import CascadeLLMError
 
 
@@ -36,12 +37,46 @@ T = TypeVar("T", bound=BaseModel)
 
 @dataclass(frozen=True)
 class LLMUsage:
-    """Token usage from a single LLM call."""
+    """Token usage and cost from a single LLM call.
+
+    `estimated_cost_usd` is computed from the pricing table in cost.py
+    based on the provider+model. May be 0.0 for self-hosted providers
+    (claude_code, ollama).
+    """
 
     input_tokens: int
     output_tokens: int
     model: str
     provider: str
+    estimated_cost_usd: float = 0.0
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        model: str,
+        provider: str,
+    ) -> "LLMUsage":
+        """Construct an LLMUsage with cost computed from the pricing table.
+
+        Provider implementations call this rather than the raw constructor
+        so cost is always computed consistently.
+        """
+        cost = compute_cost(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            provider=provider,
+            model=model,
+        )
+        return cls(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model,
+            provider=provider,
+            estimated_cost_usd=cost,
+        )
 
 
 @dataclass(frozen=True)
@@ -214,7 +249,7 @@ class AnthropicClient(LLMClient):
                 f"Raw input (truncated): {truncated}"
             ) from exc
 
-        usage = LLMUsage(
+        usage = LLMUsage.build(
             input_tokens=getattr(response.usage, "input_tokens", 0),
             output_tokens=getattr(response.usage, "output_tokens", 0),
             model=self._model,

@@ -27,6 +27,7 @@ import click
 
 from . import __version__
 from .config import DEFAULT_CONFIG_FILENAME, load_config
+from .cost import CostTracker, format_cost
 from .demo import run_demo
 from .doctor import CheckStatus, run_doctor, summarize
 from .exceptions import CascadeError
@@ -214,7 +215,9 @@ def extract(transcript_path: Path, output: Path | None, model: str | None) -> No
             f"  extracted {len(result.batch.stories)} stories -> {out_path}"
         )
         click.echo(
-            f"  tokens: in={result.usage.input_tokens} out={result.usage.output_tokens}"
+            f"  cost: {format_cost(result.usage.estimated_cost_usd)} "
+            f"({result.usage.input_tokens:,} in / {result.usage.output_tokens:,} out tokens, "
+            f"{result.usage.provider}/{result.usage.model})"
         )
     except CascadeError as exc:
         click.echo(f"error: {exc}", err=True)
@@ -294,6 +297,15 @@ def review(batch_path: Path) -> None:
     help="Path to the target repo (where code is generated). Defaults to "
     "the current working directory.",
 )
+@click.option(
+    "--max-cost",
+    type=float,
+    default=None,
+    help="Maximum cumulative LLM cost (USD) before aborting between stories. "
+    "Cascade checks the running total after each story; if it exceeds this "
+    "threshold, remaining stories are skipped. No effect on free providers "
+    "(claude_code, ollama).",
+)
 def build(
     batch_path: Path,
     story_index: int | None,
@@ -301,6 +313,7 @@ def build(
     base_branch: str,
     no_pr: bool,
     repo_root: Path | None,
+    max_cost: float | None,
 ) -> None:
     """Build code and tests for approved stories, then open PRs.
 
@@ -359,7 +372,23 @@ def build(
     click.echo(f"  stories to build: {len(stories_to_build)}")
     click.echo()
 
+    cumulative_cost = 0.0
+    cumulative_calls = 0
+    cumulative_in = 0
+    cumulative_out = 0
+    stories_built = 0
+    aborted_for_cost = False
+
     for s in stories_to_build:
+        if max_cost is not None and cumulative_cost >= max_cost:
+            click.echo(
+                f"  --max-cost {format_cost(max_cost)} reached. "
+                f"Skipping remaining {len(stories_to_build) - stories_built} story/ies.",
+                err=True,
+            )
+            aborted_for_cost = True
+            break
+
         click.echo(f"==> [{s.id}] {s.title}")
         try:
             result = build_story(
@@ -380,6 +409,23 @@ def build(
             sys.exit(1)
 
         _print_build_result(result, no_pr=no_pr)
+        cumulative_cost += result.total_llm_cost_usd
+        cumulative_in += result.total_input_tokens
+        cumulative_out += result.total_output_tokens
+        cumulative_calls += 2  # plan + code per story
+        stories_built += 1
+
+    # Session summary
+    if stories_built > 1 or (stories_built >= 1 and max_cost is not None):
+        click.echo("=" * 60)
+        click.echo(
+            f"  session: {stories_built} stor{'y' if stories_built == 1 else 'ies'} built, "
+            f"{cumulative_calls} LLM calls, {format_cost(cumulative_cost)}"
+        )
+        click.echo("=" * 60)
+
+    if aborted_for_cost:
+        sys.exit(2)
 
 
 def _print_build_result(result, *, no_pr: bool) -> None:
@@ -397,6 +443,10 @@ def _print_build_result(result, *, no_pr: bool) -> None:
         click.echo("  PR:      (skipped --no-pr)")
     else:
         click.echo(f"  PR:      #{result.pull_request.number}  {result.pull_request.url}")
+    click.echo(
+        f"  cost:    {format_cost(result.total_llm_cost_usd)} "
+        f"({result.total_input_tokens:,} in / {result.total_output_tokens:,} out tokens)"
+    )
     click.echo()
 
 
@@ -1041,6 +1091,10 @@ def try_command(keep_workspace: bool) -> None:
         click.echo(f"  Plan: {result.plan.summary}")
         click.echo(f"  Files generated: {len(result.code_change.files)}")
         click.echo(f"  Tests: {result.test_result.summary}")
+        click.echo(
+            f"  Cost: {format_cost(result.total_llm_cost_usd)} "
+            f"({result.total_input_tokens:,} in / {result.total_output_tokens:,} out tokens)"
+        )
         click.echo()
         click.echo("  Your installation is working end-to-end.")
         click.echo("  Try a real one: cascade prompt \"Add a /health endpoint\"")

@@ -49,6 +49,9 @@ class DemoResult:
     test_result: TestResult
     workspace: Path  # where the demo ran (cleaned up after unless --keep)
     success: bool  # True if every stage completed without error
+    total_llm_cost_usd: float = 0.0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
 
 # The toy story: a /hello endpoint. Simple enough that any LLM should
@@ -213,12 +216,21 @@ def run_demo(
         )
 
         success = test_result.passed
+        total_in = plan_result.usage.input_tokens + code_result.usage.input_tokens
+        total_out = plan_result.usage.output_tokens + code_result.usage.output_tokens
+        total_cost = (
+            plan_result.usage.estimated_cost_usd
+            + code_result.usage.estimated_cost_usd
+        )
         return DemoResult(
             plan=plan,
             code_change=change,
             test_result=test_result,
             workspace=workspace,
             success=success,
+            total_llm_cost_usd=total_cost,
+            total_input_tokens=total_in,
+            total_output_tokens=total_out,
         )
 
     finally:

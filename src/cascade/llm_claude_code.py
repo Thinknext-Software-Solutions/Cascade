@@ -134,11 +134,12 @@ class ClaudeCodeClient(LLMClient):
             ) from exc
 
         # The SDK doesn't always surface token counts the same way; we
-        # default to 0 if not available.
+        # default to 0 if not available. Cost will be $0 either way
+        # because claude_code is covered by the user's subscription.
         return LLMResponse(
             parsed=parsed,
             raw_text=json_text,
-            usage=LLMUsage(
+            usage=LLMUsage.build(
                 input_tokens=0,
                 output_tokens=0,
                 model=self._model,

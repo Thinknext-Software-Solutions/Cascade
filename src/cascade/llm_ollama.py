@@ -81,10 +81,11 @@ class OllamaClient(LLMClient):
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        # The LLMUsage from OpenAIClient says provider="openai"; rewrite it.
+        # The LLMUsage from OpenAIClient says provider="openai"; rewrite it
+        # so cost is computed against Ollama's pricing (zero).
         from .llm import LLMUsage
 
-        rewritten_usage = LLMUsage(
+        rewritten_usage = LLMUsage.build(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             model=response.usage.model,

@@ -54,6 +54,10 @@ class BuildResult:
     branch: str
     commit_sha: Optional[str]
     pull_request: Optional[PullRequestRef]
+    # Cumulative LLM cost across plan + code stages for this story
+    total_llm_cost_usd: float = 0.0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
 
 
 def build_story(
@@ -176,6 +180,13 @@ def build_story(
         )
     logger.info("pipeline.committed", extra={"sha": commit_sha})
 
+    # Aggregate LLM cost across plan + code stages for this story
+    total_in = plan_result.usage.input_tokens + code_result.usage.input_tokens
+    total_out = plan_result.usage.output_tokens + code_result.usage.output_tokens
+    total_cost = (
+        plan_result.usage.estimated_cost_usd + code_result.usage.estimated_cost_usd
+    )
+
     if not push_and_open_pr:
         return BuildResult(
             story=story,
@@ -186,6 +197,9 @@ def build_story(
             branch=branch,
             commit_sha=commit_sha,
             pull_request=None,
+            total_llm_cost_usd=total_cost,
+            total_input_tokens=total_in,
+            total_output_tokens=total_out,
         )
 
     # Step 9: push
@@ -217,6 +231,9 @@ def build_story(
         branch=branch,
         commit_sha=commit_sha,
         pull_request=pr,
+        total_llm_cost_usd=total_cost,
+        total_input_tokens=total_in,
+        total_output_tokens=total_out,
     )
 
 
