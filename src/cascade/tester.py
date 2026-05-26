@@ -63,9 +63,22 @@ def run_tests(
         )
 
     if not _executable_available(argv[0]):
+        install_hint = {
+            "pytest": "pip install pytest",
+            "npx": "Install Node.js: https://nodejs.org",
+            "go": "Install Go: https://go.dev/dl",
+            "cargo": "Install Rust: https://rustup.rs",
+            "mvn": "Install Maven: https://maven.apache.org",
+            "bundle": "Install Ruby + Bundler: gem install bundler",
+            "dotnet": "Install .NET SDK: https://dotnet.microsoft.com/download",
+        }.get(argv[0], f"Install '{argv[0]}' first")
         raise CascadeError(
-            f"Test executable '{argv[0]}' not found on PATH. Install it or "
-            f"set test_command in cascade.yaml to a runnable command."
+            f"Test executable '{argv[0]}' not found on PATH",
+            hint=[
+                install_hint,
+                "Or override the test command in cascade.yaml:\ntest_command: <your-command>",
+                "Or run cascade build with --no-pr first to verify code generation without running tests",
+            ],
         )
 
     logger.info(

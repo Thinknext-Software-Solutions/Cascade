@@ -310,8 +310,16 @@ def resolve_language(
     detected = detect_language(repo_root)
     if detected is not None:
         return detected
+    supported = ", ".join(sorted(PROFILES.keys()))
     raise CascadeError(
-        "Could not detect language for repo and no language was configured. "
-        "Set 'language: <name>' in cascade.yaml. Supported: "
-        f"{', '.join(sorted(PROFILES.keys()))}."
+        "Could not detect the project's language",
+        hint=[
+            "Set it in cascade.yaml:\n"
+            "language: python   # or typescript, go, rust, java, ruby, csharp, javascript",
+            "Or pass it on the CLI: --language python",
+            f"Supported: {supported}",
+            "Cascade detects from marker files (pyproject.toml, package.json, go.mod, etc). "
+            "If none are at the repo root, configure explicitly.",
+        ],
+        learn_more="cascade doctor",
     )

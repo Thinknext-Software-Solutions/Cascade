@@ -139,7 +139,7 @@ class TestResolve:
         assert resolve_language(tmp_path) is RUST
 
     def test_raises_when_no_signal(self, tmp_path):
-        with pytest.raises(CascadeError, match="Could not detect language"):
+        with pytest.raises(CascadeError, match="Could not detect"):
             resolve_language(tmp_path)
 
     def test_invalid_explicit_name_raises(self, tmp_path):

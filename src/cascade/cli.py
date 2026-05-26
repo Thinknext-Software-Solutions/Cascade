@@ -30,6 +30,7 @@ from .config import DEFAULT_CONFIG_FILENAME, load_config
 from .cost import CostTracker, format_cost
 from .demo import run_demo
 from .doctor import CheckStatus, run_doctor, summarize
+from .error_format import echo_error
 from .exceptions import CascadeError
 from .extractor import extract_stories
 from .init_seed import seed_team_memory
@@ -220,7 +221,7 @@ def extract(transcript_path: Path, output: Path | None, model: str | None) -> No
             f"{result.usage.provider}/{result.usage.model})"
         )
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
 
@@ -239,7 +240,7 @@ def review(batch_path: Path) -> None:
     try:
         batch = read_story_batch(batch_path)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
     click.echo(f"Story batch: {batch_path}")
@@ -251,7 +252,7 @@ def review(batch_path: Path) -> None:
     try:
         review_batch(batch_path)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
 
@@ -323,7 +324,7 @@ def build(
     try:
         batch = read_story_batch(batch_path)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
     approved = batch.approved()
@@ -362,7 +363,7 @@ def build(
             vcs_creds = resolve_vcs_credentials(user_config=user_cfg, provider="github")
             github_client = PyGithubClient(token=vcs_creds.token)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
     click.echo(
@@ -634,7 +635,7 @@ def ingest(
         if not result.diarization_used and not no_diarization:
             click.echo("  (diarization unavailable; all turns labeled 'Speaker')")
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
 
@@ -862,7 +863,7 @@ def prompt(
         )
         _print_build_result(result, no_pr=no_pr)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
 
@@ -952,7 +953,7 @@ def ticket(
         )
         _print_build_result(result, no_pr=no_pr)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
 
 
@@ -1060,7 +1061,7 @@ def try_command(keep_workspace: bool) -> None:
         )
         llm = build_client_from_credentials(llm_creds)
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         click.echo("  hint: run `cascade doctor` to find what's missing", err=True)
         sys.exit(1)
 
@@ -1151,7 +1152,7 @@ def ui(host: str, port: int, no_browser: bool) -> None:
     try:
         from .studio.server import create_app
     except CascadeError as exc:
-        click.echo(f"error: {exc}", err=True)
+        echo_error(exc)
         sys.exit(1)
     except ImportError as exc:
         click.echo(

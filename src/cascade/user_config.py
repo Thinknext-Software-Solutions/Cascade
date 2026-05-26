@@ -305,11 +305,25 @@ def resolve_llm_credentials(
 
     needs_key = bool(LLM_ENV_KEY_NAMES.get(resolved_provider))
     if needs_key and not key:
-        env_hint = " or ".join(LLM_ENV_KEY_NAMES.get(resolved_provider, ()))
+        env_names = LLM_ENV_KEY_NAMES.get(resolved_provider, ())
+        env_hint = " or ".join(env_names)
+        hints = [
+            f"Set it now: cascade configure llm {resolved_provider} --key <YOUR_KEY>",
+            f"Or export the env var: export {env_names[0]}=<YOUR_KEY>",
+        ]
+        if resolved_provider == "anthropic":
+            hints.append(
+                "Or use Claude Code instead (no API key needed):\n"
+                "cascade configure llm claude_code --set-default"
+            )
+            hints.append(
+                "Or use a local model with Ollama (no API key needed):\n"
+                "cascade configure llm ollama --model llama3.1 --set-default"
+            )
         raise CascadeConfigError(
-            f"No API key configured for LLM provider '{resolved_provider}'. "
-            f"Run: cascade configure llm {resolved_provider} --key <KEY>  "
-            f"OR set environment variable {env_hint}."
+            f"No API key configured for LLM provider '{resolved_provider}'",
+            hint=hints,
+            learn_more="cascade doctor",
         )
 
     model = model_override or provider_cfg.default_model
@@ -345,11 +359,29 @@ def resolve_vcs_credentials(
                 break
 
     if not token:
-        env_hint = " or ".join(VCS_ENV_TOKEN_NAMES.get(resolved, ())) or "<set in cascade configure>"
+        env_names = VCS_ENV_TOKEN_NAMES.get(resolved, ())
+        hints = [
+            f"Set it now: cascade configure vcs {resolved} --token <YOUR_TOKEN>",
+        ]
+        if env_names:
+            hints.append(f"Or export: export {env_names[0]}=<YOUR_TOKEN>")
+        if resolved == "github":
+            hints.append(
+                "Create a token at https://github.com/settings/tokens\n"
+                "(scopes needed: repo)"
+            )
+        elif resolved == "gitlab":
+            hints.append(
+                "Create a token in your GitLab profile (Settings -> Access Tokens)\n"
+                "(scope needed: api)"
+            )
+        hints.append(
+            f"Or run cascade build with --no-pr to skip the push and PR step entirely"
+        )
         raise CascadeConfigError(
-            f"No token configured for VCS provider '{resolved}'. "
-            f"Run: cascade configure vcs {resolved} --token <TOKEN>  "
-            f"OR set environment variable {env_hint}."
+            f"No token configured for VCS provider '{resolved}'",
+            hint=hints,
+            learn_more="cascade doctor",
         )
 
     return ResolvedVCSCredentials(
@@ -384,11 +416,28 @@ def resolve_issue_credentials(
                 break
 
     if not token:
-        env_hint = " or ".join(ISSUE_ENV_TOKEN_NAMES.get(provider, ())) or "<set in cascade configure>"
+        env_names = ISSUE_ENV_TOKEN_NAMES.get(provider, ())
+        hints = [
+            f"Set it now: cascade configure issue {provider} --token <YOUR_TOKEN>",
+        ]
+        if env_names:
+            hints.append(f"Or export: export {env_names[0]}=<YOUR_TOKEN>")
+        if provider == "jira":
+            hints.append(
+                "You'll also need: --base-url https://your-org.atlassian.net --user you@your-org.com\n"
+                "Create the token at https://id.atlassian.com/manage-profile/security/api-tokens"
+            )
+        elif provider == "linear":
+            hints.append("Create a personal API key at https://linear.app/settings/api")
+        elif provider == "github":
+            hints.append(
+                "Or reuse your GitHub VCS token: cascade configure issue github "
+                "--token <SAME_TOKEN_AS_VCS>"
+            )
         raise CascadeConfigError(
-            f"No token configured for issue source '{provider}'. "
-            f"Run: cascade configure issue {provider} --token <TOKEN>  "
-            f"OR set environment variable {env_hint}."
+            f"No token configured for issue source '{provider}'",
+            hint=hints,
+            learn_more="cascade doctor",
         )
 
     return ResolvedIssueCredentials(

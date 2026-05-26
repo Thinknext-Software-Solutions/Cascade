@@ -118,8 +118,14 @@ def parse_remote_url(url: str) -> RepoIdentity:
         return RepoIdentity(provider="azure_devops", owner=owner, repo=m.group(3))
 
     raise CascadeRepoError(
-        f"Could not identify VCS provider from origin URL: {url!r}. "
-        "Supported: GitHub, GitLab (incl. self-hosted), Bitbucket Cloud, Azure DevOps."
+        f"Could not identify VCS provider from origin URL: {url!r}",
+        hint=[
+            "Cascade supports: GitHub, GitLab (cloud + self-hosted), Bitbucket Cloud, Azure DevOps",
+            "Your origin URL doesn't match any of those patterns",
+            "If you're on a self-hosted Git server we don't recognize, open an issue requesting support",
+            "As a workaround: run cascade build with --no-pr to skip the PR step entirely",
+        ],
+        learn_more="https://github.com/Thinknext-Software-Solutions/Cascade/issues",
     )
 
 

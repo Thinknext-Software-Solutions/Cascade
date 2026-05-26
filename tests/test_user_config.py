@@ -200,8 +200,11 @@ class TestResolveLLMCredentials:
 
     def test_missing_key_raises_with_actionable_message(self, clean_env):
         cfg = UserConfig()
-        with pytest.raises(CascadeConfigError, match="cascade configure llm anthropic"):
+        with pytest.raises(CascadeConfigError, match="No API key configured") as info:
             resolve_llm_credentials(user_config=cfg)
+        # Actionable hints land in exc.hints, not the message
+        joined = "\n".join(info.value.hints)
+        assert "cascade configure llm anthropic" in joined
 
     def test_provider_without_key_requirement_does_not_raise(self, clean_env):
         # claude_code uses the local Claude subscription; no API key needed
@@ -257,8 +260,10 @@ class TestResolveVCSCredentials:
 
     def test_missing_token_raises(self, clean_env):
         cfg = UserConfig()
-        with pytest.raises(CascadeConfigError, match="cascade configure vcs"):
+        with pytest.raises(CascadeConfigError, match="No token configured") as info:
             resolve_vcs_credentials(user_config=cfg)
+        joined = "\n".join(info.value.hints)
+        assert "cascade configure vcs" in joined
 
 
 class TestResolveIssueCredentials:
@@ -279,8 +284,10 @@ class TestResolveIssueCredentials:
 
     def test_missing_raises(self, clean_env):
         cfg = UserConfig()
-        with pytest.raises(CascadeConfigError, match="cascade configure issue jira"):
+        with pytest.raises(CascadeConfigError, match="No token configured") as info:
             resolve_issue_credentials(user_config=cfg, provider="jira")
+        joined = "\n".join(info.value.hints)
+        assert "cascade configure issue jira" in joined
 
 
 # --------- mask_secret ----------

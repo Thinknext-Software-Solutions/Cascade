@@ -87,10 +87,22 @@ def current_branch(repo_root: Path) -> str:
 def ensure_clean_working_tree(repo_root: Path) -> None:
     """Raise if the working tree has uncommitted changes."""
     res = _run_git(repo_root, "status", "--porcelain")
+    _check_clean(res)
+
+
+def _check_clean(res) -> None:
     if res.stdout.strip():
         raise CascadeRepoError(
-            "Working tree has uncommitted changes. Commit or stash them "
-            "before running Cascade build."
+            "Working tree has uncommitted changes",
+            hint=[
+                "Commit your work first: git add -A && git commit -m '...'",
+                "Or stash it temporarily: git stash",
+                "Or discard it (DESTRUCTIVE): git restore .",
+            ],
+            learn_more=(
+                "Cascade refuses to run on a dirty tree because generated "
+                "code could be silently mixed with your in-progress work."
+            ),
         )
 
 
