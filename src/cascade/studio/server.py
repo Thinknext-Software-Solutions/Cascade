@@ -64,7 +64,7 @@ def create_app(settings: Optional[StudioSettings] = None):
     from fastapi.responses import FileResponse, HTMLResponse
     from fastapi.staticfiles import StaticFiles
 
-    settings = settings or get_settings()
+    resolved_settings = settings or get_settings()
 
     app = FastAPI(
         title="Cascade Studio",
@@ -73,6 +73,14 @@ def create_app(settings: Optional[StudioSettings] = None):
         docs_url="/api/docs",  # under /api/ to avoid colliding with the frontend
         redoc_url=None,
     )
+
+    # When an explicit settings instance is passed (typically by tests),
+    # wire it into the dependency so routes that Depends(get_settings)
+    # see those settings instead of the cached default.
+    if settings is not None:
+        app.dependency_overrides[get_settings] = lambda: resolved_settings
+
+    settings = resolved_settings
 
     if settings.cors_origins:
         app.add_middleware(
@@ -84,13 +92,11 @@ def create_app(settings: Optional[StudioSettings] = None):
         )
 
     # ---- API routes ----
-    from .api import health
+    from .api import health, projects, stories
 
     app.include_router(health.router, tags=["health"])
-
-    # Future feature routes mount here:
-    # from .api import projects, stories, builds
-    # app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+    app.include_router(projects.router)
+    app.include_router(stories.router)
 
     # ---- Static frontend ----
     _mount_static_frontend(app, STATIC_DIR)
