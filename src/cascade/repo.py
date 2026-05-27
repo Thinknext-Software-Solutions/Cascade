@@ -35,8 +35,15 @@ from .schemas import Story
 logger = logging.getLogger(__name__)
 
 
-# Branch names must be safe for git and for URLs.
-_SAFE_BRANCH_CHARS = re.compile(r"[^a-zA-Z0-9._/-]+")
+# Branch names must be safe for git and for URLs. The slug component
+# is restricted to [a-zA-Z0-9._-] -- note '/' is NOT allowed here even
+# though it is legal in git refs, because safe_branch_name builds the
+# multi-segment path explicitly; a slash inside the slug would create
+# an extra path component (and has produced trailing empty segments in
+# the past, which git rejects with "refusing to lock ref ... ends in /").
+_SAFE_BRANCH_CHARS = re.compile(r"[^a-zA-Z0-9._-]+")
+_REPEATED_DASHES = re.compile(r"-+")
+_REPEATED_DOTS = re.compile(r"\.+")
 
 
 # ----------------------------------------------------------------------------
@@ -47,11 +54,24 @@ _SAFE_BRANCH_CHARS = re.compile(r"[^a-zA-Z0-9._/-]+")
 def safe_branch_name(story_id: str, title: str, prefix: str = "cascade") -> str:
     """Build a git-safe branch name from a story.
 
-    Format: <prefix>/<story_id>/<slug-from-title>
+    Format: ``<prefix>/<story_id>/<slug-from-title>``
+
+    The slug is normalized so the full ref satisfies ``git
+    check-ref-format``: no '/' or whitespace inside the slug, no
+    consecutive '..' (collapsed), and no leading or trailing '.' / '-'
+    (stripped). A title that normalizes to an empty string falls back
+    to the literal ``story``.
     """
     slug = title.lower().strip()
     slug = _SAFE_BRANCH_CHARS.sub("-", slug)
-    slug = slug.strip("-")[:50] or "story"
+    # git refs reject '..' (used by revision syntax) and leading/trailing
+    # '.' (reserved). The dash-collapse pass handles the case where the
+    # title itself contains a run of dashes (e.g. "long--name"); the
+    # regex sub above already collapses runs of unsafe chars in one shot
+    # via the '+' quantifier, so it would not otherwise generate '--'.
+    slug = _REPEATED_DASHES.sub("-", slug)
+    slug = _REPEATED_DOTS.sub(".", slug)
+    slug = slug.strip("-.")[:50].rstrip("-.") or "story"
     return f"{prefix}/{story_id}/{slug}"
 
 

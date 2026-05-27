@@ -86,6 +86,74 @@ class TestSafeBranchName:
         n = safe_branch_name("s-1", "Add X", prefix="cscd")
         assert n.startswith("cscd/")
 
+    def test_slashes_in_title_become_dashes(self):
+        """Slashes in the title must NOT survive into the slug.
+
+        Regression for #1: a title like "login/logout/me" produced a
+        branch name with extra path segments and a trailing '/' that
+        git refused to lock with "ends in /".
+        """
+        n = safe_branch_name("s-3", "Auth foundation: login/logout/me")
+        assert n == "cascade/s-3/auth-foundation-login-logout-me"
+        assert "//" not in n
+        assert not n.endswith("/")
+
+    def test_no_trailing_slash_ever(self):
+        """Catches every shape that could produce a trailing '/'."""
+        for title in (
+            "trailing/",
+            "Pick one: a/b/c",
+            "x/",
+            "/leading",
+            "double//slash",
+        ):
+            n = safe_branch_name("s-1", title)
+            assert not n.endswith("/"), f"trailing / on title={title!r}"
+            # The trailing slug segment must exist and be non-empty.
+            assert n.split("/")[-1], f"empty slug on title={title!r}"
+
+    def test_repeated_dashes_collapsed(self):
+        """A title that already contains consecutive dashes is collapsed.
+
+        The regex's '+' quantifier means adjacent unsafe chars (':' + ' ')
+        collapse to a single '-' inside the substitution itself, NOT to
+        '--'. The _REPEATED_DASHES pass exists for titles where literal
+        consecutive dashes are already present in the input.
+        """
+        n = safe_branch_name("s-1", "name--with--double-dashes")
+        assert "--" not in n
+        assert n == "cascade/s-1/name-with-double-dashes"
+
+    def test_adjacent_unsafe_chars_collapse_in_single_sub(self):
+        """': ' (colon-space) -> single '-', not '--'. Regression guard."""
+        n = safe_branch_name("s-1", "Story: with colon")
+        assert "--" not in n
+        assert n == "cascade/s-1/story-with-colon"
+
+    def test_double_dot_collapsed(self):
+        """git refs reject '..' (revision syntax). Collapse to single dot."""
+        n = safe_branch_name("s-1", "release v1..final")
+        assert ".." not in n
+
+    def test_leading_and_trailing_dots_stripped(self):
+        """git refs reject leading or trailing '.'."""
+        n = safe_branch_name("s-1", "...weird title...")
+        slug = n.split("/")[-1]
+        assert not slug.startswith(".")
+        assert not slug.endswith(".")
+        assert slug  # not empty after stripping
+
+    def test_truncation_does_not_leave_trailing_dash_or_dot(self):
+        """If the [:50] cut lands on '-' or '.', strip it so git accepts the ref."""
+        # Construct a title whose normalized slug has '-' at position 50.
+        # 49 chars + ':' (becomes '-') + more text -> the truncation lands on '-'.
+        title = "a" * 49 + ": continues past the cap"
+        n = safe_branch_name("s-1", title)
+        slug = n.split("/")[-1]
+        assert len(slug) <= 50
+        assert not slug.endswith("-")
+        assert not slug.endswith(".")
+
 
 class TestParseGithubUrl:
     def test_https(self):
