@@ -27,6 +27,7 @@ from .languages import LanguageProfile
 from .llm import LLMClient, LLMUsage
 from .memory import TeamMemory
 from .plan_schemas import CodeChange, FileAction, Plan
+from .retry import call_with_retry
 from .schemas import Story
 
 
@@ -241,12 +242,15 @@ def generate_code(
     )
 
     try:
-        response = llm.structured_call(
-            system=CODER_SYSTEM_PROMPT,
-            user=user_prompt,
-            schema=CodeChange,
-            max_tokens=max_output_tokens,
-            temperature=temperature,
+        response = call_with_retry(
+            lambda: llm.structured_call(
+                system=CODER_SYSTEM_PROMPT,
+                user=user_prompt,
+                schema=CodeChange,
+                max_tokens=max_output_tokens,
+                temperature=temperature,
+            ),
+            description="coder",
         )
     except CascadeLLMError as exc:
         raise CascadeError(f"Coder LLM call failed for story {story.id}: {exc}") from exc
