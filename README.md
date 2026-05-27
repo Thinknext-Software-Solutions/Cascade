@@ -238,16 +238,6 @@ Four layers, highest wins:
 3. **User config** at `~/.config/cascade/config.yaml` for credentials and personal defaults. Managed via `cascade configure`.
 4. **Environment variables** as a fallback. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `JIRA_API_TOKEN`, and so on.
 
-## Roadmap
-
-| Version | Status | Highlights |
-|---|---|---|
-| **0.1.0a1** | Shipped 2026-05-25 | Live on PyPI. Foundation, all 5 LLM providers, all 4 VCS providers, all 5 issue trackers, ingest / review / build pipeline, Studio web dashboard, cost visibility, streaming progress |
-| **0.1.0** | Shipped 2026-05-26 | Promoted alpha to stable. Standalone (Cascade was already standalone; this is the version bump that lets Relay and Sentinel cut their own copies cleanly). API surface is now considered stable enough to depend on; breaking changes are deferred to a future major. 401 tests pass |
-| v0.2 | Planned Q4 2026 | Vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build improvements |
-| v0.3 | Planned Q1 2027 | Real-time meeting capture, Slack and Teams as sources, multi-repo coordination |
-| v1.0 | Planned mid-2027 | Web UI for review fully expanded, fine-tuned routing, GA |
-
 ## Contributing
 
 Contributions of all sizes welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
