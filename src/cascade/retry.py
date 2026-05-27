@@ -30,11 +30,11 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Default retry policy. Three attempts with exponential backoff
-# (~2s, ~4s, ~8s) plus jitter so a thundering herd of retries does not
-# all hit the API at the same instant. Tuned against the failure mode
-# we see in practice: a few seconds of API instability that clears
-# on its own.
+# Default retry policy. Three attempts total = two backoff intervals
+# (~2s before attempt 2 and ~4s before attempt 3) plus jitter so a
+# thundering herd of retries does not all hit the API at the same
+# instant. Tuned against the failure mode we see in practice: a few
+# seconds of API instability that clears on its own.
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BASE_BACKOFF_S = 2.0
 
@@ -42,6 +42,16 @@ DEFAULT_BASE_BACKOFF_S = 2.0
 # upstream provider failed (network/timeout/stream interruption), as
 # opposed to an output we received but could not parse. Retrying makes
 # sense only for the former.
+#
+# Coupling caveat: this keys off the exact message format chosen by
+# each provider's f-string (see llm_claude_code.py, llm.py,
+# llm_openai.py, etc.). A provider that re-words its error wrapper
+# will silently lose retry coverage. The robust fix is to introduce
+# typed exception subclasses (e.g. CascadeProviderError vs
+# CascadeOutputError) so the retry classification keys off the
+# exception type rather than the message; that refactor touches all
+# five providers and is filed separately. Until then, every provider
+# error wrapper MUST include one of these markers.
 _TRANSIENT_MARKERS: tuple[str, ...] = (
     "SDK call failed",
     "API call failed",
