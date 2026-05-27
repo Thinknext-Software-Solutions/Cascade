@@ -113,7 +113,19 @@ class TestSafeBranchName:
             assert n.split("/")[-1], f"empty slug on title={title!r}"
 
     def test_repeated_dashes_collapsed(self):
-        """Adjacent unsafe chars (':' + ' ') each become '-' -> '--' -> '-'."""
+        """A title that already contains consecutive dashes is collapsed.
+
+        The regex's '+' quantifier means adjacent unsafe chars (':' + ' ')
+        collapse to a single '-' inside the substitution itself, NOT to
+        '--'. The _REPEATED_DASHES pass exists for titles where literal
+        consecutive dashes are already present in the input.
+        """
+        n = safe_branch_name("s-1", "name--with--double-dashes")
+        assert "--" not in n
+        assert n == "cascade/s-1/name-with-double-dashes"
+
+    def test_adjacent_unsafe_chars_collapse_in_single_sub(self):
+        """': ' (colon-space) -> single '-', not '--'. Regression guard."""
         n = safe_branch_name("s-1", "Story: with colon")
         assert "--" not in n
         assert n == "cascade/s-1/story-with-colon"

@@ -65,9 +65,10 @@ def safe_branch_name(story_id: str, title: str, prefix: str = "cascade") -> str:
     slug = title.lower().strip()
     slug = _SAFE_BRANCH_CHARS.sub("-", slug)
     # git refs reject '..' (used by revision syntax) and leading/trailing
-    # '.' (reserved). Collapse runs of dashes too, to avoid the
-    # cosmetically-ugly '--' you get when adjacent punctuation in the
-    # title each substitutes to a dash (e.g. ': ' -> '--').
+    # '.' (reserved). The dash-collapse pass handles the case where the
+    # title itself contains a run of dashes (e.g. "long--name"); the
+    # regex sub above already collapses runs of unsafe chars in one shot
+    # via the '+' quantifier, so it would not otherwise generate '--'.
     slug = _REPEATED_DASHES.sub("-", slug)
     slug = _REPEATED_DOTS.sub(".", slug)
     slug = slug.strip("-.")[:50].rstrip("-.") or "story"
