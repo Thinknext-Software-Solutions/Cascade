@@ -132,8 +132,8 @@ def test_result_with_errors_field_is_included_in_message() -> None:
     assert "errors=['tool foo failed']" in str(ei.value)
 
 
-def test_max_tokens_stop_reason_raises_non_transient_error() -> None:
-    """Truncation by max_tokens must NOT carry the retry marker.
+def test_max_tokens_with_unparseable_partial_raises_non_transient_error() -> None:
+    """Truncation that leaves unparseable JSON must NOT carry the retry marker.
 
     A retry of the same prompt would produce the same truncation, so
     cascade.retry treats this error as non-transient and surfaces it
@@ -142,7 +142,10 @@ def test_max_tokens_stop_reason_raises_non_transient_error() -> None:
     """
     client = _make_client_with_messages(
         [
-            _assistant(text="partial output...", stop_reason="max_tokens"),
+            _assistant(
+                text='```json\n{"answer": "partia',  # truncated mid-string
+                stop_reason="max_tokens",
+            ),
             _result(is_error=False, subtype="success"),
         ]
     )
@@ -151,6 +154,27 @@ def test_max_tokens_stop_reason_raises_non_transient_error() -> None:
     msg = str(ei.value)
     assert "truncated at max_tokens" in msg
     assert "SDK call failed" not in msg
+
+
+def test_max_tokens_with_already_complete_json_still_succeeds() -> None:
+    """If the model emitted a valid response BEFORE hitting the budget, ship it.
+
+    Some prompts produce a complete JSON object in the first N tokens and
+    the model would have continued generating filler. stop_reason=='max_tokens'
+    in that case is not a failure -- the structured output is intact and
+    schema-valid, so we should return it.
+    """
+    client = _make_client_with_messages(
+        [
+            _assistant(
+                text='```json\n{"answer": "complete"}\n```',
+                stop_reason="max_tokens",
+            ),
+            _result(is_error=False, subtype="success"),
+        ]
+    )
+    response = client.structured_call(system="s", user="u", schema=Sample)
+    assert response.parsed.answer == "complete"
 
 
 def test_result_message_is_inspected_even_without_content() -> None:
@@ -190,3 +214,41 @@ def test_assistant_message_without_stop_reason_does_not_clobber_existing() -> No
     )
     response = client.structured_call(system="s", user="u", schema=Sample)
     assert response.parsed.answer == "ok"
+
+
+# --- contract pinning against the real SDK types -------------------------
+
+# These tests import the actual claude_agent_sdk dataclasses and assert
+# the field names this provider reads off them. SimpleNamespace mocks in
+# the tests above let us exercise control flow cheaply, but they CAN'T
+# catch the case where the SDK renames `stop_reason` to `finish_reason`
+# (or similar) and our duck-typed getattr silently returns None. These
+# tests fail loudly at the upgrade boundary instead of in production.
+
+
+def test_sdk_contract_assistant_message_exposes_stop_reason() -> None:
+    """Max-tokens detection reads AssistantMessage.stop_reason."""
+    from dataclasses import fields
+
+    from claude_agent_sdk import AssistantMessage  # type: ignore[import-not-found]
+
+    field_names = {f.name for f in fields(AssistantMessage)}
+    assert "stop_reason" in field_names, (
+        "Cascade reads AssistantMessage.stop_reason to detect max_tokens "
+        "truncation. If this field was renamed, update llm_claude_code."
+    )
+
+
+def test_sdk_contract_result_message_exposes_required_fields() -> None:
+    """ResultMessage diagnostics rely on these field names."""
+    from dataclasses import fields
+
+    from claude_agent_sdk import ResultMessage  # type: ignore[import-not-found]
+
+    field_names = {f.name for f in fields(ResultMessage)}
+    required = {"is_error", "subtype", "api_error_status", "errors", "result"}
+    missing = required - field_names
+    assert not missing, (
+        f"ResultMessage no longer exposes {missing}. Cascade's "
+        f"_collect_response diagnostics path needs to be updated."
+    )

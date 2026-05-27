@@ -129,21 +129,18 @@ class ClaudeCodeClient(LLMClient):
         if diag.is_error:
             raise CascadeLLMError(_format_result_error(self._model, diag))
 
-        # The model ran out of output budget before finishing. Retrying
-        # the same prompt produces the same truncation; the error
-        # explicitly does NOT contain the "SDK call failed" marker so
-        # cascade.retry treats it as non-transient and surfaces it
-        # immediately.
-        if diag.stop_reason == "max_tokens":
-            raise CascadeLLMError(
-                f"Claude Code response was truncated at max_tokens "
-                f"({max_tokens} requested). Either raise max_output_tokens "
-                f"or split the work into smaller chunks. "
-                f"Model: {self._model}."
-            )
+        # NB: we deliberately do NOT raise on stop_reason == "max_tokens"
+        # here. If the model happened to emit a complete, valid JSON
+        # object before hitting the budget, parsing will succeed and
+        # we should return it. Only escalate truncation to an error
+        # when the downstream parse actually fails -- handled below in
+        # the parse/validate branches via _truncation_hint().
 
         json_text = _extract_json(collected_text)
         if json_text is None:
+            hint = _truncation_hint(self._model, max_tokens, diag)
+            if hint is not None:
+                raise CascadeLLMError(hint)
             raise CascadeLLMError(
                 "Claude Code response did not contain a JSON code fence. "
                 f"First 300 chars: {collected_text[:300]!r}"
@@ -152,6 +149,9 @@ class ClaudeCodeClient(LLMClient):
         try:
             parsed_json = json.loads(json_text)
         except ValueError as exc:
+            hint = _truncation_hint(self._model, max_tokens, diag)
+            if hint is not None:
+                raise CascadeLLMError(hint) from exc
             raise CascadeLLMError(
                 f"Failed to parse Claude Code JSON output: {exc}\n"
                 f"JSON text (truncated): {json_text[:500]}"
@@ -160,6 +160,9 @@ class ClaudeCodeClient(LLMClient):
         try:
             parsed = schema.model_validate(parsed_json)
         except ValidationError as exc:
+            hint = _truncation_hint(self._model, max_tokens, diag)
+            if hint is not None:
+                raise CascadeLLMError(hint) from exc
             raise CascadeLLMError(
                 f"Claude Code output did not match schema {schema.__name__}: {exc}"
             ) from exc
@@ -267,6 +270,29 @@ def _format_result_error(model: str, diag: "ResponseDiagnostics") -> str:
     if diag.result_text:
         parts.append(f"result={diag.result_text!r}")
     return " ".join(parts)
+
+
+def _truncation_hint(
+    model: str, max_tokens: int, diag: "ResponseDiagnostics"
+) -> Optional[str]:
+    """Return a max-tokens truncation error message, or None if not applicable.
+
+    Called from the JSON-parse / schema-validate failure branches as a
+    diagnostic upgrade: when parsing fails AND the SDK told us the model
+    hit its output budget, the truncation is almost certainly the cause,
+    so we report that instead of the raw parser error. The message
+    explicitly does NOT contain the ``"SDK call failed"`` marker so
+    ``cascade.retry`` treats it as non-transient -- retrying the same
+    prompt would produce the same truncation.
+    """
+    if diag.stop_reason != "max_tokens":
+        return None
+    return (
+        f"Claude Code response was truncated at max_tokens "
+        f"({max_tokens} requested) and the partial output did not parse. "
+        f"Either raise max_output_tokens or split the work into smaller "
+        f"chunks. Model: {model}."
+    )
 
 
 def _extract_json(text: str) -> Optional[str]:
