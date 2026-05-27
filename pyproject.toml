@@ -1,6 +1,6 @@
 [project]
 name = "cascade-agent"
-version = "0.1.0a1"
+version = "0.1.0"
 description = "Turn a team meeting into shipped code. Recording in, working tested PR out, humans approving at every gate."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -10,7 +10,7 @@ authors = [
 ]
 keywords = ["ai", "agent", "meeting-transcription", "code-generation", "team-knowledge", "sdlc"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
