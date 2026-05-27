@@ -18,6 +18,7 @@ from .llm import LLMClient, LLMUsage
 from .memory import TeamMemory
 from .plan_schemas import Plan
 from .repo_scan import RepoSummary
+from .retry import call_with_retry
 from .schemas import Story
 
 
@@ -149,12 +150,15 @@ def plan_story(
     )
 
     try:
-        response = llm.structured_call(
-            system=PLANNER_SYSTEM_PROMPT,
-            user=user_prompt,
-            schema=Plan,
-            max_tokens=max_output_tokens,
-            temperature=temperature,
+        response = call_with_retry(
+            lambda: llm.structured_call(
+                system=PLANNER_SYSTEM_PROMPT,
+                user=user_prompt,
+                schema=Plan,
+                max_tokens=max_output_tokens,
+                temperature=temperature,
+            ),
+            description="planner",
         )
     except CascadeLLMError as exc:
         raise CascadeError(f"Planner LLM call failed for story {story.id}: {exc}") from exc
