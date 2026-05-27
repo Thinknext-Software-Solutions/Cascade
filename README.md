@@ -4,13 +4,13 @@ An open-source AI agent that takes a meeting recording, a tracker ticket, or a o
 
 [![PyPI](https://img.shields.io/pypi/v/cascade-agent.svg?label=PyPI&color=22c55e)](https://pypi.org/project/cascade-agent/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status](https://img.shields.io/badge/status-alpha-22c55e.svg)](#roadmap)
+[![Status](https://img.shields.io/badge/status-beta-22c55e.svg)](#roadmap)
 [![Docs](https://img.shields.io/badge/docs-cascadeagent.dev-22c55e.svg)](https://cascadeagent.dev)
 [![Built by ThinkNext](https://img.shields.io/badge/built%20by-ThinkNext-22d3ee.svg)](https://thinknextsoftware.com)
 
-> **Status**: alpha, live on PyPI as `cascade-agent==0.1.0a1`. The pipeline works end-to-end across 5 LLM providers, 4 VCS providers, 5 issue trackers, and 8 languages. We are road-testing against real repos before promoting to a stable release. Bug reports very welcome.
+> **Status**: beta, live on PyPI as `cascade-agent==0.1.0`. Standalone: zero runtime dependency on any other ThinkNext package. The pipeline works end-to-end across 5 LLM providers, 4 VCS providers, 5 issue trackers, and 8 languages. 401 tests pass. We are road-testing against real repos before promoting to 1.0. Bug reports very welcome.
 >
-> **Install**: `pip install cascade-agent` · **Docs**: [cascadeagent.dev](https://cascadeagent.dev) · **Issues**: [GitHub](https://github.com/Thinknext-Software-Solutions/Cascade/issues)
+> **Install**: `pip install cascade-agent`. **Docs**: [cascadeagent.dev](https://cascadeagent.dev). **Issues**: [GitHub](https://github.com/Thinknext-Software-Solutions/Cascade/issues).
 
 ## Why Cascade exists
 
@@ -55,8 +55,7 @@ A handful of choices set Cascade apart from the rest of the agent landscape:
 ## Quick start
 
 ```bash
-# Alpha release (0.1.0a1). Pip installs it automatically since no stable
-# version exists yet:
+# Beta release (0.1.0):
 pip install cascade-agent                       # base install (anthropic + github + cli)
 pip install "cascade-agent[all]"                # adds non-default providers + Studio web dashboard
 pip install "cascade-agent[all,ingest]"         # also adds meeting transcription (whisper)
@@ -243,11 +242,11 @@ Four layers, highest wins:
 
 | Version | Status | Highlights |
 |---|---|---|
-| **v0.1.0a1** | Shipped (2026-05-25) | Live on PyPI. Foundation, all 5 LLM providers, all 4 VCS providers, all 5 issue trackers, ingest / review / build pipeline, Studio web dashboard, cost visibility, streaming progress |
-| v0.1.0 (stable) | Target 2026-09-15 | Real-world dogfooding feedback rolled in, bug fixes from early adopters, API stabilized |
-| v0.2 | Target 2026-11-15 | Vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build improvements |
-| v0.3 | Target 2027-01-15 | Real-time meeting capture, Slack and Teams as sources, multi-repo coordination |
-| v1.0 | Target 2027-04-15 | Web UI for review fully expanded, fine-tuned routing, GA |
+| **0.1.0a1** | Shipped 2026-05-25 | Live on PyPI. Foundation, all 5 LLM providers, all 4 VCS providers, all 5 issue trackers, ingest / review / build pipeline, Studio web dashboard, cost visibility, streaming progress |
+| **0.1.0** | Shipped 2026-05-26 | Promoted alpha to stable. Standalone (Cascade was already standalone; this is the version bump that lets Relay and Sentinel cut their own copies cleanly). API surface is now considered stable enough to depend on; breaking changes are deferred to a future major. 401 tests pass |
+| v0.2 | Planned Q4 2026 | Vector-store team memory (RAG over embeddings), Copilot CLI provider, multi-story batch build improvements |
+| v0.3 | Planned Q1 2027 | Real-time meeting capture, Slack and Teams as sources, multi-repo coordination |
+| v1.0 | Planned mid-2027 | Web UI for review fully expanded, fine-tuned routing, GA |
 
 ## Contributing
 
